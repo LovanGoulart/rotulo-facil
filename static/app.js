@@ -174,6 +174,7 @@ $("back").onclick = () => {
   openMode(null);
 };
 function showAnalysisResult(show) {
+  $("foodControls").hidden = !show || mode !== "nutricao";
   $("resultScreen").hidden = !show;
   $("work").hidden = show;
   $("backResult").hidden = !show;
@@ -425,6 +426,7 @@ $("analyze").onclick = async () => {
       $("hours").value = item.horas_referencia ?? (item.continuo || item.mensal && !item.watts ? 24 : 1);
       drawEnergy();
     } else {
+      $("foodAmount").value = 1;
       drawFood();
     }
     history.pushState({analysisResult:version}, "", "#resultado");
@@ -473,19 +475,39 @@ function macros(data) {
   for (const [key,label] of Object.entries(nutrients)) list.append(el("li",label+": "+br(data[key])+(key === "kcal" ? " kcal" : " g")));
   return list;
 }
+$("foodAmount").oninput = drawFood;
 function drawFood() {
+  const factor = Number($("foodAmount").value);
+  const amount = br(factor) + (factor === 1 ? " porção" : " porções");
+  $("foodAmountLabel").textContent = amount;
+  $("foodAmount").setAttribute("aria-valuetext", amount);
+  $("foodBase").textContent = "Uma porção no medidor corresponde à base do rótulo: " + item.porcao;
+  const scaled = {};
+  for (const key of Object.keys(nutrients)) scaled[key] = item[key] * factor;
+  const level = scaled.kcal < 100 ? "Baixo" : scaled.kcal < 250 ? "Moderado" : "Alto";
+  const alerts = [];
   const result = $("result");
-  const values = macros(item);
+  const values = macros(scaled);
   for (const [key, label, unit] of [
     ["fibras","Fibras","g"], ["sodio","Sódio","mg"],
     ["acucares_adicionados","Açúcares adicionados","g"], ["gorduras_saturadas","Gorduras saturadas","g"],
   ]) {
-    if (Number.isFinite(item[key])) values.append(el("li",label + ": " + br(item[key]) + " " + unit));
+    if (Number.isFinite(item[key])) values.append(el("li",label + ": " + br(item[key] * factor) + " " + unit));
+  }
+  for (const [key, name, daily] of [
+    ["sodio","sódio",2000], ["acucares_adicionados","açúcares adicionados",50],
+    ["gorduras_saturadas","gorduras saturadas",20],
+  ]) {
+    if (!Number.isFinite(item[key])) continue;
+    const percent = 100 * item[key] * factor / daily;
+    if (percent >= 50) alerts.push(el("p","Atenção: essa quantidade fornece " + br(percent,1) +
+      "% do valor diário de referência de " + name + " para rotulagem. Considere reduzir a porção ou ajustar o restante do dia."));
   }
   result.replaceChildren(
-    el("h2",item.nome), el("p","Valores do rótulo · " + item.porcao), values,
-    el("h3","Nível calórico · " + item.nivel),
+    el("h2",item.nome), el("p",amount + " · Base do rótulo: " + item.porcao), values,
+    el("h3","Nível calórico · " + level),
     el("p","Escala ilustrativa por porção: baixo abaixo de 100 kcal, moderado de 100 a menos de 250 e alto a partir de 250."),
+    ...alerts,
     el("h3","Quanto consumir"), el("p",item.quantidade),
     el("h3","Quando consumir"), el("p",item.horario),
     el("h3","Combina com"), el("p",item.combinacoes.join(" · ")),
