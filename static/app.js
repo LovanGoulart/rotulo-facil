@@ -1,5 +1,93 @@
 "use strict";
 const $ = id => document.getElementById(id);
+(function setupInstallBanner() {
+  const standalone = window.matchMedia?.("(display-mode: standalone)") ?? {matches:false};
+  const key = "rotulo.instalado";
+  let installed = false;
+  let dismissed = false;
+  let promptEvent = null;
+  let prompting = false;
+  try { installed = localStorage.getItem(key) === "1"; } catch {}
+  function remember(value) {
+    installed = value;
+    try { localStorage.setItem(key, value ? "1" : "0"); } catch {}
+  }
+  function render() {
+    const inApp = standalone.matches || navigator.standalone === true;
+    if (inApp) remember(true);
+    $("installNote").hidden = inApp || dismissed;
+    $("installText").hidden = !installed;
+    $("installAction").hidden = installed;
+    $("installAction").disabled = prompting;
+  }
+  window.addEventListener("beforeinstallprompt", event => {
+    event.preventDefault();
+    promptEvent = event;
+    remember(false);
+    render();
+  });
+  window.addEventListener("appinstalled", () => {
+    promptEvent = null;
+    remember(true);
+    render();
+  });
+  window.addEventListener("storage", event => {
+    if (event.key === key) { installed = event.newValue === "1"; render(); }
+  });
+  $("closeInstall").onclick = () => {
+    dismissed = true;
+    render();
+    const target = $("home").hidden ? $("title") : $("home").querySelector("h1");
+    target.focus({preventScroll:true});
+  };
+  standalone.addEventListener?.("change", render);
+  function help() {
+    const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    $("installSteps").textContent = ios
+      ? "No Safari, toque em Compartilhar, escolha Adicionar à Tela de Início e confirme."
+      : "Abra o menu do navegador e procure Instalar aplicativo ou Adicionar à tela inicial. Se a opção não aparecer, tente no Chrome ou Edge.";
+    $("installHelp").showModal();
+  }
+  $("installAction").onclick = async () => {
+    if (!promptEvent) { help(); return; }
+    const event = promptEvent;
+    promptEvent = null;
+    prompting = true;
+    render();
+    try {
+      await event.prompt();
+      await event.userChoice;
+    } catch { help(); }
+    finally { prompting = false; render(); }
+  };
+  render();
+  if (navigator.getInstalledRelatedApps) {
+    navigator.getInstalledRelatedApps().then(apps => {
+      if (apps.some(app => app.platform === "webapp" &&
+          app.url && new URL(app.url, location.href).href === location.origin + "/manifest.json")) {
+        remember(true);
+        render();
+      }
+    }).catch(() => {});
+  }
+  const bar = document.querySelector("header");
+  const note = $("installNote");
+  function measure() {
+    const style = document.documentElement.style;
+    style.setProperty("--topbar", bar.offsetHeight + "px");
+    style.setProperty("--notice", (note.offsetHeight ? note.offsetHeight + 12 : 0) + "px");
+  }
+  measure();
+  if ("ResizeObserver" in window) {
+    const observer = new ResizeObserver(measure);
+    observer.observe(bar);
+    observer.observe(note);
+  } else {
+    window.addEventListener("resize", measure);
+  }
+})();
+
 const br = (value, digits = 2) => value.toLocaleString("pt-BR", {maximumFractionDigits:digits});
 const money = value => value.toLocaleString("pt-BR", {style:"currency", currency:"BRL"});
 // ARSP, boletim jul–set/2026, p. 19. R$/MWh, residencial com tributos.
@@ -237,3 +325,4 @@ for (const [id,actions] of [["result","resultActions"],["meal","mealActions"]]) 
   $(actions).append(button("📥 Baixar Resumo (Imagem)",() => exportCard(id,false)),button("📲 Enviar no WhatsApp",() => exportCard(id,true)));
 }
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => say("A instalação offline está indisponível neste navegador."));
+
