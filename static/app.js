@@ -40,6 +40,16 @@ const $ = id => document.getElementById(id);
     const target = $("home").hidden ? $("title") : $("home").querySelector("h1");
     target.focus({preventScroll:true});
   };
+  if (/Android/i.test(navigator.userAgent) && location.protocol === "https:") {
+    const launch = $("installText");
+    launch.target = "_self";
+    launch.href = "intent://" + location.host + "/#Intent;scheme=https;action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;S.browser_fallback_url=" + encodeURIComponent(location.origin + "/#abrir-app") + ";end";
+  }
+  if (location.hash === "#abrir-app" && !standalone.matches) {
+    $("installSteps").textContent = "Para abrir o Rótulo Fácil instalado, toque no ícone dele na tela inicial do aparelho.";
+    $("installHelp").showModal();
+    history.replaceState(null, "", location.pathname + location.search);
+  }
   standalone.addEventListener?.("change", render);
   function help() {
     const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) ||
@@ -156,7 +166,13 @@ function openMode(next) {
   (mode ? $("title") : $("home").querySelector("h1")).focus();
 }
 for (const node of document.querySelectorAll("[data-mode]")) node.onclick = () => openMode(node.dataset.mode);
-$("back").onclick = () => openMode(null);
+$("back").onclick = () => {
+  if (!$("resultScreen").hidden) {
+    showEnergyResult(false);
+    history.replaceState(null, "", location.pathname + location.search);
+  }
+  openMode(null);
+};
 function showEnergyResult(show) {
   $("resultScreen").hidden = !show;
   $("work").hidden = show;
