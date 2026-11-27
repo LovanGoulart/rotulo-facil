@@ -219,7 +219,7 @@ async function loadDistributors() {
     $("distributor").disabled = false;
     showTariffStatus("");
   } catch {
-    showTariffStatus("Não foi possível carregar as distribuidoras. Informe o valor da fatura ou reabra o módulo para tentar novamente.");
+    showTariffStatus("Não foi possível carregar as distribuidoras. Reabra o módulo para tentar novamente.");
   } finally {
     distributorRequest = null;
   }
@@ -331,6 +331,7 @@ const rateText = value => "R$ " + br(value,8) + "/kWh";
 const baseNote = data => data.base_local ? " Dados da ANEEL de " + dateBR(data.dados_gerados_em) + " (cópia local)." : "";
 const officialNote = "Tarifa residencial convencional da ANEEL, sem bandeira. Tributos e outras cobranças podem alterar o valor da fatura.";
 async function loadTariff() {
+  updateAnalyzeButton();
   distributorRequest?.abort();
   distributorRequest = null;
   const cnpj = selectedDistributor?.cnpj;
@@ -392,12 +393,18 @@ async function selectPhoto(event) {
     previewUrl = URL.createObjectURL(blob);
     $("preview").src = previewUrl;
     $("confirmPhoto").hidden = false;
-    $("analyzePhoto").focus();
+    updateAnalyzeButton();
+    if (!$("analyzePhoto").disabled) $("analyzePhoto").focus();
   } catch { if (revision === version) say("Não foi possível abrir a foto. Escolha um JPEG ou PNG de até 32 MB."); }
   finally { URL.revokeObjectURL(url); }
 }
 $("gallery").onchange = $("camera").onchange = selectPhoto;
 $("analyzePhoto").onclick = analyzePhoto;
+function updateAnalyzeButton() {
+  const missing = mode === "energia" && !selectedDistributor;
+  $("analyzePhoto").disabled = !photo || Boolean(request) || missing;
+  $("needDistributor").hidden = !missing;
+}
 async function analyzePhoto() {
   if (!photo || request) return;
   const manual = mode === "energia" ? manualRate() : null;
@@ -410,6 +417,7 @@ async function analyzePhoto() {
   }
   const version = revision;
   request = new AbortController();
+  updateAnalyzeButton();
   const controller = request;
   const timer = setTimeout(() => controller.abort(), 75000);
   if (mode === "energia") $("region").disabled = true;
@@ -420,7 +428,7 @@ async function analyzePhoto() {
         ? await getJSON("/api/energia/tarifa/" + cnpj, {signal:controller.signal,cache:"no-store"})
         : {valor_kwh:manual, distribuidora:selectedDistributor?.label ?? ""};
     }
-    const data = await getJSON("/api/" + mode, {method:"POST",body:photo,signal:controller.signal,headers:{"Content-Type":"image/jpeg"}});
+    const data = await getJSON(mode === "energia" ? "/api/energia?cnpj=" + encodeURIComponent(cnpj) : "/api/nutricao", {method:"POST",body:photo,signal:controller.signal,headers:{"Content-Type":"image/jpeg"}});
     if (version !== revision) return;
     item = data;
     if (mode === "energia") {
@@ -439,7 +447,8 @@ async function analyzePhoto() {
     clearTimeout(timer);
     if (version === revision) {
       request = null;
-          $("region").disabled = false;
+      updateAnalyzeButton();
+      $("region").disabled = false;
     }
   }
 };

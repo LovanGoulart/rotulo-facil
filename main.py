@@ -285,7 +285,9 @@ async def tarifa(request: Request, cnpj: Annotated[str, ParametroRota(pattern=r"
 
 
 @app.post("/api/energia", response_model=Energia)
-async def energia(request: Request):
+async def energia(request: Request, cnpj: str):
+    if cnpj not in await tarifas_vigentes(request):
+        raise HTTPException(422, "Selecione uma distribuidora válida antes de analisar a foto.")
     return await analisar(request, Energia, INSTRUCOES_ENERGIA)
 
 
