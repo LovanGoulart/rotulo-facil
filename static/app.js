@@ -90,12 +90,11 @@ const $ = id => document.getElementById(id);
 
 const br = (value, digits = 2) => value.toLocaleString("pt-BR", {maximumFractionDigits:digits});
 const money = value => value.toLocaleString("pt-BR", {style:"currency", currency:"BRL"});
-// ARSP, boletim jul–set/2026, p. 19. R$/MWh, residencial com tributos.
-const rates = {PB:719,RR:762,SC:785,CE:803,PR:828,ES:833,AM:836,SP:841,SE:853,RN:854,PE:878,MA:899,DF:926,AL:931,RS:941,BA:946,AC:967,RO:976,AP:1010,MG:1014,PI:1028,GO:1028,MS:1077,MT:1083,RJ:1087,PA:1113,TO:1125};
 const periods = ["Minuto","Hora","Dia","Mês (30 dias)","Ano"];
 const nutrients = {kcal:"Energia",carboidratos:"Carboidratos",proteinas:"Proteínas",gorduras:"Gorduras"};
 const mealKey = "rotulo.refeicao.v1";
 let mode, item, photo, previewUrl, period = 3, request, revision = 0, library;
+let distributorsLoaded = false, distributorRequest, appliedTariff;
 function el(tag, text, cls) {
   const node = document.createElement(tag);
   node.textContent = text;
@@ -136,6 +135,7 @@ function resetPhoto() {
   $("preview").removeAttribute("src");
   for (const id of ["confirmPhoto","resultBox","controls","add"]) $(id).hidden = true;
   $("analyze").disabled = false;
+  $("region").disabled = false;
   say("");
 }
 function openMode(next) {
@@ -147,25 +147,97 @@ function openMode(next) {
   $("title").textContent = mode === "energia" ? "Consumo de energia" : "Tabela nutricional";
   $("tip").textContent = mode === "energia" ? "Enquadre a potência em W ou o consumo em kWh/mês." : "Inclua a porção e as quatro linhas de energia, carboidratos, proteínas e gorduras.";
   drawMeal();
+  if (mode === "energia" && !distributorsLoaded) loadDistributors();
   (mode ? $("title") : $("home").querySelector("h1")).focus();
 }
 for (const node of document.querySelectorAll("[data-mode]")) node.onclick = () => openMode(node.dataset.mode);
 $("back").onclick = () => openMode(null);
-Object.keys(rates).sort().forEach(uf => $("uf").add(new Option(uf, uf)));
-$("uf").value = "RS";
-function tariff() {
+function showEnergyResult(show) {
+  $("resultScreen").hidden = !show;
+  $("work").hidden = show;
+  $("backResult").hidden = !show;
+  document.body.classList.toggle("show-energy-result", show);
+  for (const id of ["controls", "resultBox"]) {
+    const panel = $(id);
+    panel.hidden = !show;
+    if (show) $("resultScreen").append(panel);
+    else $("mealBox").before(panel);
+  }
+  say("");
+  window.scrollTo(0, 0);
+  (show ? $("result") : $("analyze")).focus({preventScroll:show});
+}
+if (location.hash === "#resultado") history.replaceState(null, "", location.pathname + location.search);
+window.addEventListener("popstate", () => {
+  if (mode === "energia" && item && history.state?.energyResult === revision) showEnergyResult(true);
+  else if (!$("resultScreen").hidden) showEnergyResult(false);
+});
+$("backResult").onclick = () => history.back();
+
+async function getJSON(url, options) {
+  const response = await fetch(url, options);
+  const data = await response.json();
+  if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Solicitação indisponível.");
+  return data;
+}
+function showTariffStatus(text) { $("reference").textContent = text; }
+async function loadDistributors() {
+  if (distributorRequest) return;
+  const controller = new AbortController();
+  distributorRequest = controller;
+  showTariffStatus("Carregando distribuidoras da ANEEL…");
+  try {
+    const distributors = await getJSON("/api/energia/distribuidoras", {signal:controller.signal,cache:"no-store"});
+    const sorted = distributors.sort((a,b) => a.nome.localeCompare(b.nome,"pt-BR"));
+    const names = sorted.map(item => item.nome);
+    for (const distributor of sorted) {
+      const duplicate = names.indexOf(distributor.nome) !== names.lastIndexOf(distributor.nome);
+      const label = duplicate ? distributor.nome + " · CNPJ " + distributor.cnpj : distributor.nome;
+      $("distributor").add(new Option(label,distributor.cnpj));
+    }
+    distributorsLoaded = true;
+    $("distributor").disabled = false;
+    showTariffStatus("");
+  } catch {
+    showTariffStatus("Não foi possível carregar as distribuidoras. Informe o valor da fatura ou reabra o módulo para tentar novamente.");
+  } finally {
+    distributorRequest = null;
+  }
+}
+const dateBR = value => value.split("-").reverse().join("/");
+const rateText = value => "R$ " + br(value,8) + "/kWh";
+const officialNote = "Tarifa residencial convencional da ANEEL, sem bandeira. Tributos e outras cobranças podem alterar o valor da fatura.";
+async function loadTariff() {
+  distributorRequest?.abort();
+  distributorRequest = null;
+  const cnpj = $("distributor").value;
+  if (!cnpj) { showTariffStatus(""); return; }
+  const controller = new AbortController();
+  distributorRequest = controller;
+  showTariffStatus("Consultando a tarifa da ANEEL…");
+  try {
+    const data = await getJSON("/api/energia/tarifa/" + cnpj, {signal:controller.signal,cache:"no-store"});
+    if (controller.signal.aborted) return;
+    showTariffStatus(rateText(data.valor_kwh) + " · Vigência até " + dateBR(data.fim) + ". " + officialNote);
+  } catch {
+    if (!controller.signal.aborted) showTariffStatus("Não foi possível consultar a tarifa. Toque em Analisar foto para tentar novamente ou informe o valor da fatura.");
+  } finally {
+    if (distributorRequest === controller) distributorRequest = null;
+  }
+}
+$("distributor").onchange = loadTariff;
+function manualRate() {
   const value = $("rate").value.trim();
-  if (!value) return rates[$("uf").value]/1000;
+  if (!value) return null;
   return /^\d+(?:[.,]\d{1,8})?$/.test(value) && Number.isFinite(Number(value.replace(",", "."))) ? Number(value.replace(",", ".")) : NaN;
 }
-function updateRate() {
-  const ok = Number.isFinite(tariff());
-  $("rate").setAttribute("aria-invalid", String(!ok));
-  $("reference").textContent = ok ? "Média residencial de " + $("uf").value + ": R$ " + br(rates[$("uf").value]/1000, 3) + "/kWh. ANEEL/ARSP, 12 meses até maio de 2026, com tributos." : "Informe um valor em R$/kWh, por exemplo 0,95.";
-  if (mode === "energia" && item) drawEnergy();
+function validateManualRate() {
+  const valid = !Number.isNaN(manualRate());
+  $("rate").setAttribute("aria-invalid", String(!valid));
+  $("rateError").hidden = valid;
+  return valid;
 }
-$("uf").onchange = $("rate").oninput = updateRate;
-updateRate();
+$("rate").oninput = validateManualRate;
 $("snap").onclick = () => $("camera").click();
 $("pick").onclick = () => $("gallery").click();
 async function selectPhoto(event) {
@@ -202,37 +274,54 @@ async function selectPhoto(event) {
 $("gallery").onchange = $("camera").onchange = selectPhoto;
 $("analyze").onclick = async () => {
   if (!photo || request) return;
-  if (mode === "energia" && !Number.isFinite(tariff())) { $("rate").focus(); return; }
+  const manual = mode === "energia" ? manualRate() : null;
+  if (mode === "energia" && !validateManualRate()) { $("rate").focus(); return; }
+  const cnpj = $("distributor").value;
+  if (mode === "energia" && manual === null && (!cnpj || distributorRequest)) {
+    say(distributorRequest ? "Aguarde a consulta da ANEEL ou informe o valor da fatura." : "Selecione uma distribuidora ou informe o valor da fatura.");
+    ($("distributor").disabled ? $("rate") : $("distributor")).focus();
+    return;
+  }
   const version = revision;
   request = new AbortController();
-  const timer = setTimeout(() => request?.abort(), 75000);
+  const controller = request;
+  const timer = setTimeout(() => controller.abort(), 75000);
   $("analyze").disabled = true;
+  if (mode === "energia") $("region").disabled = true;
   say("Lendo a etiqueta…");
   try {
-    const response = await fetch("/api/"+mode,{method:"POST",body:photo,signal:request.signal,headers:{"Content-Type":"image/jpeg"}});
-    const data = await response.json();
-    if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Falha na leitura.");
+    if (mode === "energia") {
+      appliedTariff = manual === null
+        ? await getJSON("/api/energia/tarifa/" + cnpj, {signal:controller.signal,cache:"no-store"})
+        : {valor_kwh:manual, distribuidora:$("distributor").selectedOptions[0].value ? $("distributor").selectedOptions[0].text : ""};
+    }
+    const data = await getJSON("/api/" + mode, {method:"POST",body:photo,signal:controller.signal,headers:{"Content-Type":"image/jpeg"}});
     if (version !== revision) return;
     item = data;
-    $("resultBox").hidden = false;
     if (mode === "energia") {
       period = 3;
       $("hours").value = item.horas_referencia ?? (item.continuo || item.mensal && !item.watts ? 24 : 1);
-      $("controls").hidden = false;
       drawEnergy();
+      history.pushState({energyResult:version}, "", "#resultado");
+      showEnergyResult(true);
     } else {
+      $("resultBox").hidden = false;
       drawFood();
       $("add").hidden = false;
       $("add").disabled = false;
+      $("confirmPhoto").hidden = true;
+      say("Leitura concluída. Confira os valores com a etiqueta.");
+      $("result").focus();
     }
-    $("confirmPhoto").hidden = true;
-    say("Leitura concluída. Confira os valores com a etiqueta.");
-    $("result").focus();
   } catch (e) {
     if (version === revision) say(e instanceof TypeError || e instanceof SyntaxError || e.name === "AbortError" ? "Não foi possível concluir a leitura. Confira a conexão e tente novamente." : e.message);
   } finally {
     clearTimeout(timer);
-    if (version === revision) { request = null; $("analyze").disabled = false; }
+    if (version === revision) {
+      request = null;
+      $("analyze").disabled = false;
+      $("region").disabled = false;
+    }
   }
 };
 periods.forEach((label,i) => $("periods").append(button(label, () => { period = i; drawEnergy(); })));
@@ -247,8 +336,21 @@ function drawEnergy() {
   $("hoursLabel").textContent = br(hours) + " h";
   $("basis").textContent = basis;
   Array.from($("periods").children).forEach((node,i) => node.setAttribute("aria-pressed",String(i === period)));
-  const rate = tariff();
-  $("result").replaceChildren(el("h2",item.nome),el("p", "Estimativa · " + periods[period] + (period < 2 ? " de uso" : period === 4 ? " (365 dias)" : "")),el("p",Number.isFinite(rate) ? money(kwh*rate) : "Confira a tarifa", "metric"),el("p",br(kwh,6)+" kWh"),el("p",[item.watts && br(item.watts)+" W",item.mensal && br(item.mensal)+" kWh/mês",item.classe && "Classe "+item.classe].filter(Boolean).join(" · ")),el("p",$("uf").value+" · "+(Number.isFinite(rate) ? "R$ "+br(rate,8)+"/kWh" : "Tarifa inválida")+" · "+br(hours)+" h/dia"),el("p",basis));
+  const rate = appliedTariff.valor_kwh;
+  const details = [appliedTariff.distribuidora, rateText(rate), br(hours) + " h/dia"].filter(Boolean);
+  const source = appliedTariff.fim
+    ? officialNote + " Vigência de " + dateBR(appliedTariff.inicio) + " a " + dateBR(appliedTariff.fim) + "."
+    : "Valor informado da fatura.";
+  $("result").replaceChildren(
+    el("h2",item.nome),
+    el("p","Estimativa · " + periods[period] + (period < 2 ? " de uso" : period === 4 ? " (365 dias)" : "")),
+    el("p",money(kwh * rate),"metric"),
+    el("p",br(kwh,6) + " kWh"),
+    el("p",[item.watts && br(item.watts) + " W",item.mensal && br(item.mensal) + " kWh/mês",item.classe && "Classe " + item.classe].filter(Boolean).join(" · ")),
+    el("p",details.join(" · ")),
+    el("p",source),
+    el("p",basis),
+  );
 }
 function macros(data) {
   const list = el("ul","");

@@ -10,12 +10,14 @@ from pathlib import Path
 from typing import Annotated, Literal
 
 import httpx
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Path as ParametroRota, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 from PIL import Image, ImageDraw, ImageOps
 from pydantic import BaseModel, Field
+
+from tarifas import AneelIndisponivel, CatalogoTarifas
 
 
 PASTA_STATIC = Path(__file__).resolve().parent / "static"
@@ -54,6 +56,7 @@ async def lifespan(app: FastAPI):
     timeout = httpx.Timeout(55.0, connect=10.0)
     async with httpx.AsyncClient(timeout=timeout, trust_env=True) as cliente:
         app.state.cliente = cliente
+        app.state.catalogo_tarifas = CatalogoTarifas(cliente)
         app.state.vagas = asyncio.Semaphore(4)
         app.state.chamadas = deque()
         yield
@@ -70,7 +73,7 @@ origens = [
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origens,
-    allow_methods=["POST"],
+    allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
 )
 
@@ -225,6 +228,32 @@ async def analisar(request: Request, modelo, instrucoes: str):
                 resultado.nivel = "Alto"
 
         return resultado
+
+
+async def tarifas_vigentes(request: Request):
+    try:
+        return await request.app.state.catalogo_tarifas.vigentes()
+    except AneelIndisponivel:
+        raise HTTPException(
+            503, "Tarifas da ANEEL indisponíveis. Tente novamente ou informe o valor da fatura."
+        )
+
+
+@app.get("/api/energia/distribuidoras")
+async def distribuidoras(request: Request):
+    vigentes = await tarifas_vigentes(request)
+    return [
+        {"cnpj": tarifa.cnpj, "nome": tarifa.distribuidora}
+        for tarifa in sorted(vigentes.values(), key=lambda t: (t.distribuidora.casefold(), t.cnpj))
+    ]
+
+
+@app.get("/api/energia/tarifa/{cnpj}")
+async def tarifa(request: Request, cnpj: Annotated[str, ParametroRota(pattern=r"^[0-9]{14}$")]):
+    vigente = (await tarifas_vigentes(request)).get(cnpj)
+    if vigente is None:
+        raise HTTPException(404, "A distribuidora está sem tarifa residencial vigente disponível.")
+    return vigente
 
 
 @app.post("/api/energia", response_model=Energia)
