@@ -155,6 +155,8 @@ function openMode(next) {
   closeDistributorList();
   resetPhoto();
   mode = next;
+  $("manualEnergy").hidden = mode !== "energia";
+  updateAnalyzeButton();
   $("work").hidden = !mode;
   $("home").hidden = Boolean(mode);
   $("region").hidden = mode !== "energia";
@@ -186,7 +188,7 @@ function showAnalysisResult(show) {
   }
   say("");
   window.scrollTo(0, 0);
-  (show ? $("result") : $("pick")).focus({preventScroll:show});
+  (show ? $("result") : item?.manual ? $("calculateDevice") : $("pick")).focus({preventScroll:show});
 }
 if (location.hash === "#resultado") history.replaceState(null, "", location.pathname + location.search);
 window.addEventListener("popstate", () => {
@@ -399,14 +401,39 @@ async function selectPhoto(event) {
   finally { URL.revokeObjectURL(url); }
 }
 $("gallery").onchange = $("camera").onchange = selectPhoto;
-$("analyzePhoto").onclick = analyzePhoto;
+$("analyzePhoto").onclick = () => analyzePhoto();
+$("deviceUnit").onchange = () => {
+  const monthly = $("deviceUnit").value === "mensal";
+  $("deviceValueLabel").textContent = monthly ? "Consumo mensal (kWh/mês)" : "Potência (W)";
+  $("referenceHoursBox").hidden = !monthly;
+  $("deviceValue").value = "";
+};
+$("deviceForm").onsubmit = event => {
+  event.preventDefault();
+  if (mode !== "energia" || request || !selectedDistributor) return;
+  const number = input => /^\d+(?:[.,]\d+)?$/.test(input.value.trim()) ? Number(input.value.trim().replace(",",".")) : NaN;
+  const value = number($("deviceValue"));
+  const monthly = $("deviceUnit").value === "mensal";
+  const hours = monthly && $("referenceHours").value.trim() ? number($("referenceHours")) : null;
+  if (!Number.isFinite(value) || value <= 0 || value > 1000000) {
+    say("Informe um valor positivo de potência ou consumo, de até 1.000.000."); $("deviceValue").focus(); return;
+  }
+  if (hours !== null && (!(hours > 0) || hours > 24)) {
+    say("Informe as horas de referência entre 0 e 24, acima de zero."); $("referenceHours").focus(); return;
+  }
+  const name = $("deviceName").value.trim();
+  if (!name) { $("deviceName").focus(); return; }
+  analyzePhoto({nome:name, watts:monthly ? null : value, mensal:monthly ? value : null,
+    horas_referencia:hours, continuo:false, manual:true});
+};
 function updateAnalyzeButton() {
   const missing = mode === "energia" && !selectedDistributor;
   $("analyzePhoto").disabled = !photo || Boolean(request) || missing;
   $("needDistributor").hidden = !missing;
+  $("calculateDevice").disabled = Boolean(request) || !selectedDistributor;
 }
-async function analyzePhoto() {
-  if (!photo || request) return;
+async function analyzePhoto(device = null) {
+  if ((!device && !photo) || request) return;
   const manual = mode === "energia" ? manualRate() : null;
   if (mode === "energia" && !validateManualRate()) { $("rate").focus(); return; }
   const cnpj = selectedDistributor?.cnpj;
@@ -421,14 +448,14 @@ async function analyzePhoto() {
   const controller = request;
   const timer = setTimeout(() => controller.abort(), 75000);
   if (mode === "energia") $("region").disabled = true;
-  say("Lendo a etiqueta…");
+  say(device ? "Calculando consumo…" : "Lendo a etiqueta…");
   try {
     if (mode === "energia") {
       appliedTariff = manual === null
         ? await getJSON("/api/energia/tarifa/" + cnpj, {signal:controller.signal,cache:"no-store"})
         : {valor_kwh:manual, distribuidora:selectedDistributor?.label ?? ""};
     }
-    const data = await getJSON(mode === "energia" ? "/api/energia?cnpj=" + encodeURIComponent(cnpj) : "/api/nutricao", {method:"POST",body:photo,signal:controller.signal,headers:{"Content-Type":"image/jpeg"}});
+    const data = device ?? await getJSON(mode === "energia" ? "/api/energia?cnpj=" + encodeURIComponent(cnpj) : "/api/nutricao", {method:"POST",body:photo,signal:controller.signal,headers:{"Content-Type":"image/jpeg"}});
     if (version !== revision) return;
     item = data;
     if (mode === "energia") {
@@ -459,6 +486,7 @@ async function analyzePhoto() {
 periods.forEach((label,i) => $("periods").append(button(label, () => { period = i; drawEnergy(); })));
 $("hours").oninput = drawEnergy;
 function energyTemperature(monthly) {
+  if (item.manual) return "Cálculo com dados informados manualmente, sem ajuste de temperatura.";
   const condition = monthly ? item.temperatura_consumo_mensal : item.temperatura_potencia;
   if (condition) return "Condição indicada na etiqueta: " + condition;
   const name = normalizeDistributorName(item.nome);
@@ -479,7 +507,7 @@ function drawEnergy() {
   const base = item.horas_referencia ?? 24;
   const kw = monthly ? item.mensal/(30*base) : item.watts/1000;
   const kwh = kw * [1/60,1,hours,hours*30,hours*365][period];
-  const basis = monthly ? "Consumo mensal distribuído por " + br(base) + " h/dia" + (item.horas_referencia ? " conforme a etiqueta." : " como hipótese de referência.") : "Estimativa pela potência nominal durante o uso.";
+  const basis = monthly ? "Consumo mensal distribuído por " + br(base) + " h/dia" + (item.horas_referencia ? (item.manual ? " conforme informado." : " conforme a etiqueta.") : " como hipótese de referência.") : "Estimativa pela potência nominal durante o uso.";
   $("hoursLabel").textContent = br(hours) + " h";
   $("basis").textContent = basis;
   Array.from($("periods").children).forEach((node,i) => node.setAttribute("aria-pressed",String(i === period)));
