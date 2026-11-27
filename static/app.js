@@ -155,6 +155,7 @@ function openMode(next) {
   closeDistributorList();
   resetPhoto();
   mode = next;
+  $("analyzeEnergy").hidden = mode !== "energia";
   $("work").hidden = !mode;
   $("home").hidden = Boolean(mode);
   $("region").hidden = mode !== "energia";
@@ -342,7 +343,7 @@ async function loadTariff() {
     const data = await getJSON("/api/energia/tarifa/" + cnpj, {signal:controller.signal,cache:"no-store"});
     if (controller.signal.aborted) return;
     distributorRequest = null;
-    if (mode === "energia" && photo && !item) analyzePhoto();
+
     showTariffStatus(rateText(data.valor_kwh) + " · Vigência até " + dateBR(data.fim) + ". " + officialNote + baseNote(data));
   } catch {
     if (!controller.signal.aborted) showTariffStatus("Não foi possível consultar a tarifa. Selecione novamente a distribuidora ou informe o valor da fatura.");
@@ -362,7 +363,7 @@ function validateManualRate() {
   return valid;
 }
 $("rate").oninput = validateManualRate;
-$("rate").onchange = () => { if (mode === "energia" && Number.isFinite(manualRate())) analyzePhoto(); };
+
 $("snap").onclick = () => $("camera").click();
 $("pick").onclick = () => $("gallery").click();
 async function selectPhoto(event) {
@@ -392,18 +393,20 @@ async function selectPhoto(event) {
     previewUrl = URL.createObjectURL(blob);
     $("preview").src = previewUrl;
     $("confirmPhoto").hidden = false;
-    await analyzePhoto();
+    if (mode === "nutricao") await analyzePhoto();
+    else $("analyzeEnergy").focus();
   } catch { if (revision === version) say("Não foi possível abrir a foto. Escolha um JPEG ou PNG de até 32 MB."); }
   finally { URL.revokeObjectURL(url); }
 }
 $("gallery").onchange = $("camera").onchange = selectPhoto;
+$("analyzeEnergy").onclick = analyzePhoto;
 async function analyzePhoto() {
-  if (!photo || request || item) return;
+  if (!photo || request) return;
   const manual = mode === "energia" ? manualRate() : null;
   if (mode === "energia" && !validateManualRate()) { $("rate").focus(); return; }
   const cnpj = selectedDistributor?.cnpj;
-  if (mode === "energia" && manual === null && (!cnpj || distributorRequest)) {
-    say(distributorRequest ? "Aguarde a consulta da ANEEL ou informe o valor da fatura." : "Selecione uma distribuidora ou informe o valor da fatura.");
+  if (mode === "energia" && (!cnpj || (manual === null && distributorRequest))) {
+    say(distributorRequest ? "Aguarde o carregamento das distribuidoras ou da tarifa." : "Selecione a distribuidora antes de analisar a foto.");
     ($("distributor").disabled ? $("rate") : $("distributor")).focus();
     return;
   }
@@ -488,11 +491,12 @@ function drawFood() {
     const explicit = text.match(/x[ií]caras?(?: de ch[aá])?\s*(?:de|com)\s*(\d+(?:[.,]\d+)?)\s*ml/i);
     const capacity = item.capacidade_xicara_ml ?? (explicit ? Number(explicit[1].replace(",",".")) : 200);
     const cups = factor * count;
-    amount = br(cups,4) + (cups === 1 ? " xícara de " : " xícaras de ") + br(capacity) + " ml";
-    const mass = text.match(/^\s*(\d+(?:[.,]\d+)?)\s*(g|ml)\b/i);
-    description = mass ? br(Number(mass[1].replace(",",".")) * factor,3) + " " + mass[2] + " (" + amount + ")" : amount;
+    const measure = br(cups,4) + (cups < 2 ? " xícara" : " xícaras");
+    amount = measure + " de " + br(capacity) + " ml";
+    const equivalent = measure + " ou " + br(cups * capacity,3) + " ml";
+    const mass = text.match(/^\s*(\d+(?:[.,]\d+)?)\s*g\b/i);
+    description = mass ? br(Number(mass[1].replace(",",".")) * factor,3) + " g (" + equivalent + ")" : equivalent;
     explanation = "Quantidade selecionada: " + description;
-    if (!item.capacidade_xicara_ml && !explicit) explanation += ". Xícara de referência: 200 ml.";
   }
   $("foodAmountLabel").textContent = amount;
   $("foodAmount").setAttribute("aria-valuetext", amount);
