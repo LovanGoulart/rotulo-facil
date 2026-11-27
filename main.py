@@ -43,6 +43,9 @@ class Energia(BaseModel):
 class Nutricao(BaseModel):
     nome: Texto
     porcao: Texto
+    tipo_alimento: Literal["solido", "liquido"] | None = None
+    base_gramas: Positivo | None = None
+    base_ml: Positivo | None = None
     xicaras_por_porcao: Positivo | None = None
     capacidade_xicara_ml: Positivo | None = None
     kcal: Numero
@@ -116,6 +119,7 @@ Moderado de 100 a menos de 250 kcal e Alto a partir de 250 kcal.
 Na mesma coluna, leia fibras (g), sódio (mg), açúcares adicionados (g) e
 gorduras saturadas (g). Use null se ausentes ou ilegíveis. Não confunda
 açúcares totais com adicionados.
+Identifique tipo_alimento pelo produto no estado a que os nutrientes se referem: salgadinho e pó são solido, refrigerante e outras bebidas prontas são liquido. Se incerto, use null. Para a mesma coluna dos nutrientes, copie a massa da porção em base_gramas e o volume em base_ml somente quando expressos no rótulo (converta kg para g ou L para ml). Não use peso da embalagem, não converta massa em volume e não estime densidade.
 Se a porção lida trouxer uma medida em xícaras, registre em xicaras_por_porcao
 o número de xícaras dessa porção (½ = 0.5). Em capacidade_xicara_ml, registre
 o volume de UMA xícara quando declarado, ou divida o volume em ml da mesma

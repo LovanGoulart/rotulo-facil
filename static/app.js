@@ -436,7 +436,11 @@ async function analyzePhoto() {
       $("hours").value = item.horas_referencia ?? (item.continuo || item.mensal && !item.watts ? 24 : 1);
       drawEnergy();
     } else {
-      $("foodAmount").value = 1;
+      const slider = $("foodAmount");
+      const measure = foodMeasure(item);
+      slider.step = measure.unit === "g" ? 1 : 0.25;
+      slider.max = measure.unit === "g" ? Math.ceil(4 * measure.base) : 4;
+      slider.value = measure.unit === "g" ? Math.max(1,Math.round(measure.base)) : 1;
       drawFood();
     }
     history.pushState({analysisResult:version}, "", "#resultado");
@@ -502,27 +506,39 @@ function macros(data) {
   return list;
 }
 $("foodAmount").oninput = drawFood;
+function foodMeasure(food) {
+  const readUnit = regex => {
+    const match = food.porcao.match(regex);
+    return match ? Number(match[1].replace(",",".")) : null;
+  };
+  const grams = food.base_gramas ?? readUnit(/(\d+(?:[.,]\d+)?)\s*g\b/i);
+  const ml = food.base_ml ?? readUnit(/(\d+(?:[.,]\d+)?)\s*ml\b/i);
+  if (food.tipo_alimento !== "liquido" && grams > 0) return {unit:"g",base:grams};
+  if (food.tipo_alimento !== "solido") {
+    if (ml > 0) return {unit:"ml",base:ml};
+    if (food.tipo_alimento === "liquido" && food.xicaras_por_porcao > 0) {
+      return {unit:"ml",base:food.xicaras_por_porcao * (food.capacidade_xicara_ml ?? 200)};
+    }
+  }
+  return {unit:"porção",base:1};
+}
 function drawFood() {
   const selected = Number($("foodAmount").value);
+  const measure = foodMeasure(item);
   let factor = selected;
-  let amount = br(factor) + (factor === 1 ? " porção" : " porções");
-  const text = item.porcao.replace(/(\d)\s*½/g,"$1 1/2").replace(/½/g,"1/2").replace(/¼/g,"1/4").replace(/¾/g,"3/4");
-  const match = text.match(/(?:(\d+)\s+)?(\d+(?:[.,]\d+)?)(?:\s*\/\s*(\d+))?\s*x[ií]caras?/i);
-  const count = item.xicaras_por_porcao ?? (match && Number(match[1] || 0) + Number(match[2].replace(",",".")) / Number(match[3] || 1));
+  let amount = br(selected) + (selected === 1 ? " porção" : " porções");
   let description = amount + " · Base do rótulo: " + item.porcao;
-  let explanation = "Uma porção no medidor corresponde à base do rótulo: " + item.porcao;
-  if (Number.isFinite(count) && count > 0) {
-    const explicit = text.match(/x[ií]caras?(?: de ch[aá])?\s*(?:de|com)\s*(\d+(?:[.,]\d+)?)\s*ml/i);
-    const capacity = item.capacidade_xicara_ml ?? (explicit ? Number(explicit[1].replace(",",".")) : 200);
-    const cups = selected;
-    factor = cups * 200 / (count * capacity);
-    const measure = br(cups,4) + (cups < 2 ? " xícara" : " xícaras");
-    amount = measure + " de 200 ml";
-    const equivalent = measure + " ou " + br(cups * 200,3) + " ml";
-    const mass = text.match(/^\s*(\d+(?:[.,]\d+)?)\s*g\b/i);
-    description = mass ? br(Number(mass[1].replace(",",".")) * factor,3) + " g (" + equivalent + ")" : equivalent;
-    explanation = "Quantidade selecionada: " + description;
+  if (measure.unit === "g") {
+    factor = selected / measure.base;
+    amount = br(selected,0) + " g";
+    description = amount;
+  } else if (measure.unit === "ml") {
+    const volume = selected * 200;
+    factor = volume / measure.base;
+    amount = br(selected) + (selected < 2 ? " xícara" : " xícaras") + " de 200 ml";
+    description = amount + " (" + br(volume,0) + " ml)";
   }
+  const explanation = "Quantidade selecionada: " + description;
   $("foodAmountLabel").textContent = amount;
   $("foodAmount").setAttribute("aria-valuetext", amount);
   $("foodBase").textContent = explanation;
