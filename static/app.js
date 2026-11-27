@@ -478,7 +478,16 @@ function macros(data) {
 $("foodAmount").oninput = drawFood;
 function drawFood() {
   const factor = Number($("foodAmount").value);
-  const amount = br(factor) + (factor === 1 ? " porção" : " porções");
+  let amount = br(factor) + (factor === 1 ? " porção" : " porções");
+  if (Number.isFinite(item.xicaras_por_porcao) && item.xicaras_por_porcao > 0) {
+    const cups = factor * item.xicaras_por_porcao;
+    amount = br(cups,4) + (cups === 1 ? " xícara" : " xícaras");
+    if (Number.isFinite(item.capacidade_xicara_ml) && item.capacidade_xicara_ml > 0) {
+      amount += " de " + br(item.capacidade_xicara_ml) + " ml";
+    } else {
+      amount += " (capacidade não informada no rótulo)";
+    }
+  }
   $("foodAmountLabel").textContent = amount;
   $("foodAmount").setAttribute("aria-valuetext", amount);
   $("foodBase").textContent = "Uma porção no medidor corresponde à base do rótulo: " + item.porcao;

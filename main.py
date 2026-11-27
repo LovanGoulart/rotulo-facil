@@ -41,6 +41,8 @@ class Energia(BaseModel):
 class Nutricao(BaseModel):
     nome: Texto
     porcao: Texto
+    xicaras_por_porcao: Positivo | None = None
+    capacidade_xicara_ml: Positivo | None = None
     kcal: Numero
     carboidratos: Numero
     proteinas: Numero
@@ -105,6 +107,14 @@ Moderado de 100 a menos de 250 kcal e Alto a partir de 250 kcal.
 Na mesma coluna, leia fibras (g), sódio (mg), açúcares adicionados (g) e
 gorduras saturadas (g). Use null se ausentes ou ilegíveis. Não confunda
 açúcares totais com adicionados.
+Se a porção lida trouxer uma medida em xícaras, registre em xicaras_por_porcao
+o número de xícaras dessa porção (½ = 0.5). Em capacidade_xicara_ml, registre
+o volume de UMA xícara quando declarado, ou divida o volume em ml da mesma
+porção pelo número de xícaras se o rótulo explicitar essa equivalência.
+Não converta gramas em ml nem assuma um tamanho padrão. Use null para dados
+ausentes. Nas sugestões que usam xícara, indique a capacidade individual
+em ml quando conhecida. Se sugerir uma medida culinária independente da
+embalagem, especifique o tamanho da xícara escolhida como sugestão.
 Em quantidade, escreva uma sugestão prática em segunda pessoa, em até duas
 frases. Para um alimento identificado, proponha uma quantidade aproximada
 em medida caseira adequada ao uso (unidade, fatia, colher ou tigela).
