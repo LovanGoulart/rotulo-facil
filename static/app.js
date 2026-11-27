@@ -148,7 +148,6 @@ function resetPhoto() {
   previewUrl = null;
   $("preview").removeAttribute("src");
   for (const id of ["confirmPhoto","resultBox","controls"]) $(id).hidden = true;
-  $("analyze").disabled = false;
   $("region").disabled = false;
   say("");
 }
@@ -187,7 +186,7 @@ function showAnalysisResult(show) {
   }
   say("");
   window.scrollTo(0, 0);
-  (show ? $("result") : $("analyze")).focus({preventScroll:show});
+  (show ? $("result") : $("pick")).focus({preventScroll:show});
 }
 if (location.hash === "#resultado") history.replaceState(null, "", location.pathname + location.search);
 window.addEventListener("popstate", () => {
@@ -342,9 +341,11 @@ async function loadTariff() {
   try {
     const data = await getJSON("/api/energia/tarifa/" + cnpj, {signal:controller.signal,cache:"no-store"});
     if (controller.signal.aborted) return;
+    distributorRequest = null;
+    if (mode === "energia" && photo && !item) analyzePhoto();
     showTariffStatus(rateText(data.valor_kwh) + " · Vigência até " + dateBR(data.fim) + ". " + officialNote + baseNote(data));
   } catch {
-    if (!controller.signal.aborted) showTariffStatus("Não foi possível consultar a tarifa. Toque em Analisar foto para tentar novamente ou informe o valor da fatura.");
+    if (!controller.signal.aborted) showTariffStatus("Não foi possível consultar a tarifa. Selecione novamente a distribuidora ou informe o valor da fatura.");
   } finally {
     if (distributorRequest === controller) distributorRequest = null;
   }
@@ -361,6 +362,7 @@ function validateManualRate() {
   return valid;
 }
 $("rate").oninput = validateManualRate;
+$("rate").onchange = () => { if (mode === "energia" && Number.isFinite(manualRate())) analyzePhoto(); };
 $("snap").onclick = () => $("camera").click();
 $("pick").onclick = () => $("gallery").click();
 async function selectPhoto(event) {
@@ -390,13 +392,13 @@ async function selectPhoto(event) {
     previewUrl = URL.createObjectURL(blob);
     $("preview").src = previewUrl;
     $("confirmPhoto").hidden = false;
-    $("analyze").focus();
+    await analyzePhoto();
   } catch { if (revision === version) say("Não foi possível abrir a foto. Escolha um JPEG ou PNG de até 32 MB."); }
   finally { URL.revokeObjectURL(url); }
 }
 $("gallery").onchange = $("camera").onchange = selectPhoto;
-$("analyze").onclick = async () => {
-  if (!photo || request) return;
+async function analyzePhoto() {
+  if (!photo || request || item) return;
   const manual = mode === "energia" ? manualRate() : null;
   if (mode === "energia" && !validateManualRate()) { $("rate").focus(); return; }
   const cnpj = selectedDistributor?.cnpj;
@@ -409,7 +411,6 @@ $("analyze").onclick = async () => {
   request = new AbortController();
   const controller = request;
   const timer = setTimeout(() => controller.abort(), 75000);
-  $("analyze").disabled = true;
   if (mode === "energia") $("region").disabled = true;
   say("Lendo a etiqueta…");
   try {
@@ -437,8 +438,7 @@ $("analyze").onclick = async () => {
     clearTimeout(timer);
     if (version === revision) {
       request = null;
-      $("analyze").disabled = false;
-      $("region").disabled = false;
+          $("region").disabled = false;
     }
   }
 };
@@ -479,18 +479,24 @@ $("foodAmount").oninput = drawFood;
 function drawFood() {
   const factor = Number($("foodAmount").value);
   let amount = br(factor) + (factor === 1 ? " porção" : " porções");
-  if (Number.isFinite(item.xicaras_por_porcao) && item.xicaras_por_porcao > 0) {
-    const cups = factor * item.xicaras_por_porcao;
-    amount = br(cups,4) + (cups === 1 ? " xícara" : " xícaras");
-    if (Number.isFinite(item.capacidade_xicara_ml) && item.capacidade_xicara_ml > 0) {
-      amount += " de " + br(item.capacidade_xicara_ml) + " ml";
-    } else {
-      amount += " (capacidade não informada no rótulo)";
-    }
+  const text = item.porcao.replace(/(\d)\s*½/g,"$1 1/2").replace(/½/g,"1/2").replace(/¼/g,"1/4").replace(/¾/g,"3/4");
+  const match = text.match(/(?:(\d+)\s+)?(\d+(?:[.,]\d+)?)(?:\s*\/\s*(\d+))?\s*x[ií]caras?/i);
+  const count = item.xicaras_por_porcao ?? (match && Number(match[1] || 0) + Number(match[2].replace(",",".")) / Number(match[3] || 1));
+  let description = amount + " · Base do rótulo: " + item.porcao;
+  let explanation = "Uma porção no medidor corresponde à base do rótulo: " + item.porcao;
+  if (Number.isFinite(count) && count > 0) {
+    const explicit = text.match(/x[ií]caras?(?: de ch[aá])?\s*(?:de|com)\s*(\d+(?:[.,]\d+)?)\s*ml/i);
+    const capacity = item.capacidade_xicara_ml ?? (explicit ? Number(explicit[1].replace(",",".")) : 200);
+    const cups = factor * count;
+    amount = br(cups,4) + (cups === 1 ? " xícara de " : " xícaras de ") + br(capacity) + " ml";
+    const mass = text.match(/^\s*(\d+(?:[.,]\d+)?)\s*(g|ml)\b/i);
+    description = mass ? br(Number(mass[1].replace(",",".")) * factor,3) + " " + mass[2] + " (" + amount + ")" : amount;
+    explanation = "Quantidade selecionada: " + description;
+    if (!item.capacidade_xicara_ml && !explicit) explanation += ". Xícara de referência: 200 ml.";
   }
   $("foodAmountLabel").textContent = amount;
   $("foodAmount").setAttribute("aria-valuetext", amount);
-  $("foodBase").textContent = "Uma porção no medidor corresponde à base do rótulo: " + item.porcao;
+  $("foodBase").textContent = explanation;
   const scaled = {};
   for (const key of Object.keys(nutrients)) scaled[key] = item[key] * factor;
   const level = scaled.kcal < 100 ? "Baixo" : scaled.kcal < 250 ? "Moderado" : "Alto";
@@ -513,7 +519,7 @@ function drawFood() {
       "% do valor diário de referência de " + name + " para rotulagem. Considere reduzir a porção ou ajustar o restante do dia."));
   }
   result.replaceChildren(
-    el("h2",item.nome), el("p",amount + " · Base do rótulo: " + item.porcao), values,
+    el("h2",item.nome), el("p",description), values,
     el("h3","Nível calórico · " + level),
     el("p","Escala ilustrativa por porção: baixo abaixo de 100 kcal, moderado de 100 a menos de 250 e alto a partir de 250."),
     ...alerts,
