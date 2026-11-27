@@ -503,7 +503,8 @@ function macros(data) {
 }
 $("foodAmount").oninput = drawFood;
 function drawFood() {
-  const factor = Number($("foodAmount").value);
+  const selected = Number($("foodAmount").value);
+  let factor = selected;
   let amount = br(factor) + (factor === 1 ? " porção" : " porções");
   const text = item.porcao.replace(/(\d)\s*½/g,"$1 1/2").replace(/½/g,"1/2").replace(/¼/g,"1/4").replace(/¾/g,"3/4");
   const match = text.match(/(?:(\d+)\s+)?(\d+(?:[.,]\d+)?)(?:\s*\/\s*(\d+))?\s*x[ií]caras?/i);
@@ -513,10 +514,11 @@ function drawFood() {
   if (Number.isFinite(count) && count > 0) {
     const explicit = text.match(/x[ií]caras?(?: de ch[aá])?\s*(?:de|com)\s*(\d+(?:[.,]\d+)?)\s*ml/i);
     const capacity = item.capacidade_xicara_ml ?? (explicit ? Number(explicit[1].replace(",",".")) : 200);
-    const cups = factor * count;
+    const cups = selected;
+    factor = cups * 200 / (count * capacity);
     const measure = br(cups,4) + (cups < 2 ? " xícara" : " xícaras");
-    amount = measure + " de " + br(capacity) + " ml";
-    const equivalent = measure + " ou " + br(cups * capacity,3) + " ml";
+    amount = measure + " de 200 ml";
+    const equivalent = measure + " ou " + br(cups * 200,3) + " ml";
     const mass = text.match(/^\s*(\d+(?:[.,]\d+)?)\s*g\b/i);
     description = mass ? br(Number(mass[1].replace(",",".")) * factor,3) + " g (" + equivalent + ")" : equivalent;
     explanation = "Quantidade selecionada: " + description;

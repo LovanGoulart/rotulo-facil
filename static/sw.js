@@ -1,5 +1,5 @@
-const CACHE = "rotulo-shell-v21";
-const shell = ["/", "/app.js?v=21", "/manifest.json", "/icone/192.png", "/icone/512.png"];
+const CACHE = "rotulo-shell-v22";
+const shell = ["/", "/app.js?v=22", "/manifest.json", "/icone/192.png", "/icone/512.png"];
 
 self.addEventListener("install", event => event.waitUntil((async () => {
   const cache = await caches.open(CACHE);
