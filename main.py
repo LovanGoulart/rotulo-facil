@@ -120,17 +120,14 @@ Na mesma coluna, leia fibras (g), sódio (mg), açúcares adicionados (g) e
 gorduras saturadas (g). Use null se ausentes ou ilegíveis. Não confunda
 açúcares totais com adicionados.
 Identifique tipo_alimento pelo produto no estado a que os nutrientes se referem: salgadinho e pó são solido, refrigerante e outras bebidas prontas são liquido. Se incerto, use null. Para a mesma coluna dos nutrientes, copie a massa da porção em base_gramas e o volume em base_ml somente quando expressos no rótulo (converta kg para g ou L para ml). Não use peso da embalagem, não converta massa em volume e não estime densidade.
-Se a porção lida trouxer uma medida em xícaras, registre em xicaras_por_porcao
-o número de xícaras dessa porção (½ = 0.5). Em capacidade_xicara_ml, registre
-o volume de UMA xícara quando declarado, ou divida o volume em ml da mesma
-porção pelo número de xícaras se o rótulo explicitar essa equivalência.
-Não converta gramas em ml nem assuma um tamanho padrão. Use null para dados
-ausentes. Nas sugestões que usam xícara, indique a capacidade individual
-em ml quando conhecida. Se sugerir uma medida culinária independente da
-embalagem, especifique o tamanho da xícara escolhida como sugestão.
+Só para líquidos, registre as xícaras declaradas em xicaras_por_porcao e a
+capacidade individual declarada em capacidade_xicara_ml. Use null para
+dados ausentes e para sólidos. Nunca converta massa em volume.
 Em quantidade, escreva uma sugestão prática em segunda pessoa, em até duas
-frases. Para um alimento identificado, proponha uma quantidade aproximada
-em medida caseira adequada ao uso (unidade, fatia, colher ou tigela).
+frases. Para sólidos e pós, expresse a quantidade sugerida em gramas
+inteiros (ex.: 25 g). Use gramas mesmo se a embalagem também mencionar
+xícaras. Em todos os textos de orientação, reserve xícaras para líquidos.
+Para bebidas prontas, use ml ou xícaras com a capacidade em ml.
 Diga em qual situação ela faz sentido e como ajustá-la conforme a fome,
 a saciedade ou os acompanhamentos. Formule sua sugestão a partir do tipo
 de alimento e do papel dele na refeição. A porção impressa e a base por

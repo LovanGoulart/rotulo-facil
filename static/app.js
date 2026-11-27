@@ -522,12 +522,20 @@ function foodMeasure(food) {
   }
   return {unit:"porção",base:1};
 }
+function servingAdvice(food, measure) {
+  if (measure.unit === "ml" || !/x[ií]caras?/i.test(food.quantidade)) return food.quantidade;
+  if (measure.unit === "g") {
+    return "Para se orientar, a base nutricional da embalagem equivale a cerca de " +
+      br(Math.max(1, Math.round(measure.base)),0) + " g. Ajuste a quantidade conforme sua fome e o restante da refeição.";
+  }
+  return "Ajuste a porção conforme sua fome e os acompanhamentos. O peso em gramas não foi identificado no rótulo.";
+}
 function drawFood() {
   const selected = Number($("foodAmount").value);
   const measure = foodMeasure(item);
   let factor = selected;
   let amount = br(selected) + (selected === 1 ? " porção" : " porções");
-  let description = amount + " · Base do rótulo: " + item.porcao;
+  let description = measure.unit === "porção" && /x[ií]caras?/i.test(item.porcao) ? amount : amount + " · Base do rótulo: " + item.porcao;
   if (measure.unit === "g") {
     factor = selected / measure.base;
     amount = br(selected,0) + " g";
@@ -568,7 +576,7 @@ function drawFood() {
     el("h3","Nível calórico · " + level),
     el("p","Escala ilustrativa por porção: baixo abaixo de 100 kcal, moderado de 100 a menos de 250 e alto a partir de 250."),
     ...alerts,
-    el("h3","Quanto consumir"), el("p",item.quantidade),
+    el("h3","Quanto consumir"), el("p",servingAdvice(item,measure)),
     el("h3","Quando consumir"), el("p",item.horario),
     el("h3","Combina com"), el("p",item.combinacoes.join(" · ")),
   );
