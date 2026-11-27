@@ -35,6 +35,8 @@ class Energia(BaseModel):
     mensal: Positivo | None
     classe: Texto | None
     continuo: bool
+    temperatura_potencia: Texto | None = None
+    temperatura_consumo_mensal: Texto | None = None
     horas_referencia: Horas | None
 
 
@@ -92,6 +94,13 @@ Use null para valores ausentes. Informe a classe energética se visível.
 Use continuo=true para aparelhos normalmente ligados 24 horas por dia.
 Informe horas_referencia somente se a etiqueta indicar explicitamente
 quantas horas por dia foram usadas como referência do consumo mensal.
+Para temperatura_potencia e temperatura_consumo_mensal, transcreva somente
+a condição térmica que o rótulo associa explicitamente ao respectivo dado.
+Preserve valores, unidades, faixa e contexto (ambiente de ensaio, interior
+do compartimento, temperatura selecionada ou posição do seletor). Nunca
+converta a posição média em graus nem trate temperatura ambiente como ajuste
+do controle. Ignore limites de segurança e faixas de operação sem relação
+com a medição. Retorne null quando não houver essa informação.
 Se nem a potência em W nem o consumo mensal estiverem legíveis, devolva
 {"erro":true}.
 """

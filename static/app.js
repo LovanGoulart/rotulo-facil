@@ -454,6 +454,21 @@ async function analyzePhoto() {
 };
 periods.forEach((label,i) => $("periods").append(button(label, () => { period = i; drawEnergy(); })));
 $("hours").oninput = drawEnergy;
+function energyTemperature(monthly) {
+  const condition = monthly ? item.temperatura_consumo_mensal : item.temperatura_potencia;
+  if (condition) return "Condição indicada na etiqueta: " + condition;
+  const name = normalizeDistributorName(item.nome);
+  if (/ar condicionado|split|climatizador/.test(name)) {
+    return "A etiqueta não indica a temperatura de referência deste cálculo. A estimativa não pressupõe um ajuste específico no controle do ar-condicionado.";
+  }
+  if (/geladeira|refrigerador|freezer|frigobar/.test(name)) {
+    return "A etiqueta não informa a temperatura interna ou a posição do termostato usada nesta medição. A estimativa não pressupõe que o seletor esteja no médio.";
+  }
+  if (/forno|aquecedor|secadora|lava loucas|lavadora/.test(name)) {
+    return "A etiqueta não associa o valor utilizado a uma temperatura ou programa específico. O ajuste escolhido durante o uso pode alterar o consumo.";
+  }
+  return "Esta estimativa usa o dado elétrico da etiqueta, sem assumir uma temperatura de funcionamento.";
+}
 function drawEnergy() {
   const hours = Number($("hours").value);
   const monthly = item.mensal != null && (item.horas_referencia != null || item.continuo || !item.watts);
@@ -478,6 +493,7 @@ function drawEnergy() {
     el("p",details.join(" · ")),
     el("p",source),
     el("p",basis),
+    el("h3","Temperatura de referência"), el("p",energyTemperature(monthly)),
   );
 }
 function macros(data) {
