@@ -438,9 +438,9 @@ async function analyzePhoto() {
     } else {
       const slider = $("foodAmount");
       const measure = foodMeasure(item);
-      slider.step = measure.unit === "g" ? 1 : 0.25;
-      slider.max = measure.unit === "g" ? Math.ceil(4 * measure.base) : 4;
-      slider.value = measure.unit === "g" ? Math.max(1,Math.round(measure.base)) : 1;
+      slider.step = measure.unit === "g" ? 5 : 0.25;
+      slider.max = measure.unit === "g" ? 5 * Math.ceil(4 * measure.base / 5) : 4;
+      slider.value = measure.unit === "g" ? Math.max(5, 5 * Math.round(measure.base / 5)) : 1;
       drawFood();
     }
     history.pushState({analysisResult:version}, "", "#resultado");
