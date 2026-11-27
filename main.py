@@ -105,9 +105,16 @@ Moderado de 100 a menos de 250 kcal e Alto a partir de 250 kcal.
 Na mesma coluna, leia fibras (g), sódio (mg), açúcares adicionados (g) e
 gorduras saturadas (g). Use null se ausentes ou ilegíveis. Não confunda
 açúcares totais com adicionados.
-Em quantidade, explique a porção declarada, com medida caseira se impressa,
-e como considerar a fome, a saciedade e o restante da refeição. Se a base
-for apenas 100 g/ml, explique que ela serve para comparação.
+Em quantidade, escreva uma sugestão prática em segunda pessoa, em até duas
+frases. Para um alimento identificado, proponha uma quantidade aproximada
+em medida caseira adequada ao uso (unidade, fatia, colher ou tigela).
+Diga em qual situação ela faz sentido e como ajustá-la conforme a fome,
+a saciedade ou os acompanhamentos. Formule sua sugestão a partir do tipo
+de alimento e do papel dele na refeição. A porção impressa e a base por
+100 g/ml servem para interpretar os nutrientes, não como dose recomendada.
+Não atribua sua sugestão à embalagem nem invente equivalências em gramas.
+Se o alimento não estiver identificado ou exigir dosagem específica, evite
+estimar uma quantidade e explique brevemente o motivo.
 Em horario, dê um exemplo prático de refeição compatível com o alimento e
 explique como encaixá-lo na rotina, sem fixar hora do relógio. Priorize
 acompanhamentos in natura ou minimamente processados.

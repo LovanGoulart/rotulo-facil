@@ -54,7 +54,7 @@ header nav{display:flex;gap:8px}
 <ul id="distributorOptions" role="listbox" aria-label="Distribuidoras de energia" hidden></ul>
 </div><p id="reference" class="muted" role="status"></p><label for="rate">Valor exato da minha conta (R$/kWh, opcional)</label><input id="rate" inputmode="decimal" placeholder="Ex.: 0,95" aria-describedby="rateError"><p id="rateError" class="muted" role="status" hidden>Informe um valor em R$/kWh, por exemplo 0,95.</p></fieldset>
 <div class="panel"><h2>Fotografe a etiqueta</h2><p id="tip"></p><div class="row"><button id="snap" class="primary">📷 Tirar foto</button><button id="pick">Escolher da galeria</button></div><input id="camera" type="file" accept="image/*" capture="environment" hidden><input id="gallery" type="file" accept="image/*" hidden>
-<div id="confirmPhoto" hidden><img id="preview" alt="Prévia da foto selecionada"><button id="analyze" class="primary">Analisar foto</button></div></div>
+<div id="confirmPhoto" hidden><img id="preview" alt="Prévia da foto selecionada"><p>Ao analisar, a foto é enviada à OpenAI para leitura.</p><button id="analyze" class="primary">Analisar foto</button></div></div>
 <div id="controls" class="panel" hidden><label for="hours">Horas ligado por dia · <output id="hoursLabel"></output></label><input id="hours" type="range" min="0" max="24" step=".25"><p id="basis"></p><h3>Ver consumo por período</h3><div id="periods" class="row"></div></div>
 <div id="resultBox" hidden><article id="result" tabindex="-1"></article><div class="row" id="resultActions"></div></div>
 <section id="mealBox" hidden><article id="meal"></article><div id="mealActions" class="row"></div><div id="editMeal" class="panel"></div></section>
