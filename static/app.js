@@ -155,7 +155,6 @@ function openMode(next) {
   closeDistributorList();
   resetPhoto();
   mode = next;
-  $("analyzeEnergy").hidden = mode !== "energia";
   $("work").hidden = !mode;
   $("home").hidden = Boolean(mode);
   $("region").hidden = mode !== "energia";
@@ -393,13 +392,12 @@ async function selectPhoto(event) {
     previewUrl = URL.createObjectURL(blob);
     $("preview").src = previewUrl;
     $("confirmPhoto").hidden = false;
-    if (mode === "nutricao") await analyzePhoto();
-    else $("analyzeEnergy").focus();
+    $("analyzePhoto").focus();
   } catch { if (revision === version) say("Não foi possível abrir a foto. Escolha um JPEG ou PNG de até 32 MB."); }
   finally { URL.revokeObjectURL(url); }
 }
 $("gallery").onchange = $("camera").onchange = selectPhoto;
-$("analyzeEnergy").onclick = analyzePhoto;
+$("analyzePhoto").onclick = analyzePhoto;
 async function analyzePhoto() {
   if (!photo || request) return;
   const manual = mode === "energia" ? manualRate() : null;
