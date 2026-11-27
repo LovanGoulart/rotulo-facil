@@ -439,7 +439,7 @@ async function analyzePhoto() {
       const slider = $("foodAmount");
       const measure = foodMeasure(item);
       slider.step = measure.unit === "g" ? 5 : 0.25;
-      slider.max = measure.unit === "g" ? 5 * Math.ceil(4 * measure.base / 5) : 4;
+      slider.max = measure.unit === "g" ? 300 : 4;
       slider.value = measure.unit === "g" ? Math.max(5, 5 * Math.round(measure.base / 5)) : 1;
       drawFood();
     }
