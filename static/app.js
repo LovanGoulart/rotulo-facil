@@ -147,7 +147,7 @@ function resetPhoto() {
   if (previewUrl) URL.revokeObjectURL(previewUrl);
   previewUrl = null;
   $("preview").removeAttribute("src");
-  for (const id of ["confirmPhoto","resultBox","controls","add"]) $(id).hidden = true;
+  for (const id of ["confirmPhoto","resultBox","controls"]) $(id).hidden = true;
   $("analyze").disabled = false;
   $("region").disabled = false;
   say("");
@@ -168,19 +168,19 @@ function openMode(next) {
 for (const node of document.querySelectorAll("[data-mode]")) node.onclick = () => openMode(node.dataset.mode);
 $("back").onclick = () => {
   if (!$("resultScreen").hidden) {
-    showEnergyResult(false);
+    showAnalysisResult(false);
     history.replaceState(null, "", location.pathname + location.search);
   }
   openMode(null);
 };
-function showEnergyResult(show) {
+function showAnalysisResult(show) {
   $("resultScreen").hidden = !show;
   $("work").hidden = show;
   $("backResult").hidden = !show;
-  document.body.classList.toggle("show-energy-result", show);
+  document.body.classList.toggle("show-analysis-result", show);
   for (const id of ["controls", "resultBox"]) {
     const panel = $(id);
-    panel.hidden = !show;
+    panel.hidden = !show || (id === "controls" && mode !== "energia");
     if (show) $("resultScreen").append(panel);
     else $("mealBox").before(panel);
   }
@@ -190,8 +190,8 @@ function showEnergyResult(show) {
 }
 if (location.hash === "#resultado") history.replaceState(null, "", location.pathname + location.search);
 window.addEventListener("popstate", () => {
-  if (mode === "energia" && item && history.state?.energyResult === revision) showEnergyResult(true);
-  else if (!$("resultScreen").hidden) showEnergyResult(false);
+  if (item && history.state?.analysisResult === revision) showAnalysisResult(true);
+  else if (!$("resultScreen").hidden) showAnalysisResult(false);
 });
 $("backResult").onclick = () => history.back();
 
@@ -424,17 +424,11 @@ $("analyze").onclick = async () => {
       period = 3;
       $("hours").value = item.horas_referencia ?? (item.continuo || item.mensal && !item.watts ? 24 : 1);
       drawEnergy();
-      history.pushState({energyResult:version}, "", "#resultado");
-      showEnergyResult(true);
     } else {
-      $("resultBox").hidden = false;
       drawFood();
-      $("add").hidden = false;
-      $("add").disabled = false;
-      $("confirmPhoto").hidden = true;
-      say("Leitura concluída. Confira os valores com a etiqueta.");
-      $("result").focus();
     }
+    history.pushState({analysisResult:version}, "", "#resultado");
+    showAnalysisResult(true);
   } catch (e) {
     if (version === revision) say(e instanceof TypeError || e instanceof SyntaxError || e.name === "AbortError" ? "Não foi possível concluir a leitura. Confira a conexão e tente novamente." : e.message);
   } finally {
@@ -481,11 +475,22 @@ function macros(data) {
 }
 function drawFood() {
   const result = $("result");
-  result.replaceChildren(el("h2",item.nome),el("p","Porção do rótulo · "+item.porcao),macros(item),el("h3","Nível calórico · "+item.nivel),el("p","Escala ilustrativa por porção: baixo abaixo de 100 kcal, moderado de 100 a menos de 250 e alto a partir de 250."),el("h3","Quando consumir"),el("p",item.horario),el("h3","Porção sugerida"),el("p",item.quantidade),el("h3","Combina com"),el("p",item.combinacoes.join(" · ")));
+  const values = macros(item);
+  for (const [key, label, unit] of [
+    ["fibras","Fibras","g"], ["sodio","Sódio","mg"],
+    ["acucares_adicionados","Açúcares adicionados","g"], ["gorduras_saturadas","Gorduras saturadas","g"],
+  ]) {
+    if (Number.isFinite(item[key])) values.append(el("li",label + ": " + br(item[key]) + " " + unit));
+  }
+  result.replaceChildren(
+    el("h2",item.nome), el("p","Valores do rótulo · " + item.porcao), values,
+    el("h3","Nível calórico · " + item.nivel),
+    el("p","Escala ilustrativa por porção: baixo abaixo de 100 kcal, moderado de 100 a menos de 250 e alto a partir de 250."),
+    el("h3","Quanto consumir"), el("p",item.quantidade),
+    el("h3","Quando consumir"), el("p",item.horario),
+    el("h3","Combina com"), el("p",item.combinacoes.join(" · ")),
+  );
 }
-$("add").onclick = () => {
-  if (saveMeal([...meal,item])) { $("add").disabled = true; say("Uma porção adicionada. Para incluir outro alimento, tire uma nova foto."); $("meal").scrollIntoView(); }
-};
 function drawMeal() {
   $("mealBox").hidden = mode !== "nutricao" || !meal.length;
   if (!meal.length) return;

@@ -45,6 +45,10 @@ class Nutricao(BaseModel):
     carboidratos: Numero
     proteinas: Numero
     gorduras: Numero
+    fibras: Numero | None = None
+    sodio: Numero | None = None
+    acucares_adicionados: Numero | None = None
+    gorduras_saturadas: Numero | None = None
     nivel: Literal["Baixo", "Moderado", "Alto"]
     horario: Texto
     quantidade: Texto
@@ -98,8 +102,15 @@ essa base. Se faltar algum dos quatro valores ou a base for ambígua,
 devolva {"erro":true}. Use zero somente se declarado no rótulo.
 Para o nível ilustrativo por porção, use Baixo abaixo de 100 kcal,
 Moderado de 100 a menos de 250 kcal e Alto a partir de 250 kcal.
-Em horario, sugira um momento possível para consumir e explique em uma
-frase. Em quantidade, use a porção da embalagem como referência.
+Na mesma coluna, leia fibras (g), sódio (mg), açúcares adicionados (g) e
+gorduras saturadas (g). Use null se ausentes ou ilegíveis. Não confunda
+açúcares totais com adicionados.
+Em quantidade, explique a porção declarada, com medida caseira se impressa,
+e como considerar a fome, a saciedade e o restante da refeição. Se a base
+for apenas 100 g/ml, explique que ela serve para comparação.
+Em horario, dê um exemplo prático de refeição compatível com o alimento e
+explique como encaixá-lo na rotina, sem fixar hora do relógio. Priorize
+acompanhamentos in natura ou minimamente processados.
 Não prescreva dietas nem apresente um horário ou quantidade como ideal
 para todas as pessoas. Sugira dois ou três alimentos para acompanhar.
 """
@@ -172,7 +183,7 @@ async def analisar(request: Request, modelo, instrucoes: str):
                     "model": "gpt-4o",
                     "response_format": {"type": "json_object"},
                     "temperature": 0,
-                    "max_tokens": 750,
+                    "max_tokens": 1000,
                     "store": False,
                     "messages": [
                         {"role": "system", "content": sistema},
