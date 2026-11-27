@@ -3,9 +3,10 @@ import json
 import logging
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
 
 import httpx
 
@@ -28,6 +29,7 @@ CAMPOS = (
     "VlrTUSD", "VlrTE", "DatGeracaoConjuntoDados",
 )
 HORARIO_BRASILIA = timezone(timedelta(hours=-3))
+ARQUIVO_CONTINGENCIA = Path(__file__).with_name("tarifas-aneel.json")
 logger = logging.getLogger(__name__)
 
 
@@ -39,6 +41,7 @@ class Tarifa:
     fim: date
     dados_gerados_em: date
     valor_kwh: float
+    base_local: bool = False
 
 
 class AneelIndisponivel(Exception):
@@ -88,10 +91,26 @@ async def buscar_tarifas(cliente: httpx.AsyncClient) -> list[Tarifa]:
     return tarifas
 
 
+def carregar_base_local() -> list[Tarifa]:
+    try:
+        dados = json.loads(ARQUIVO_CONTINGENCIA.read_text(encoding="utf-8"))
+        return [
+            Tarifa(
+                tarifa["cnpj"], tarifa["distribuidora"], date.fromisoformat(tarifa["inicio"]),
+                date.fromisoformat(tarifa["fim"]), date.fromisoformat(tarifa["dados_gerados_em"]),
+                tarifa["valor_kwh"], base_local=True,
+            )
+            for tarifa in dados
+        ]
+    except (OSError, ValueError, KeyError, TypeError) as erro:
+        logger.warning("Base local de tarifas indisponível: %s", type(erro).__name__)
+        return []
+
+
 class CatalogoTarifas:
     def __init__(self, cliente: httpx.AsyncClient):
         self.cliente = cliente
-        self.tarifas: list[Tarifa] = []
+        self.tarifas = carregar_base_local()
         self.proxima_consulta = 0.0
         self.lock = asyncio.Lock()
 
@@ -102,7 +121,7 @@ class CatalogoTarifas:
                     self.tarifas = await asyncio.wait_for(buscar_tarifas(self.cliente), timeout=25)
                 except (httpx.HTTPError, TimeoutError, asyncio.TimeoutError, ValueError, KeyError,
                         TypeError, AttributeError, InvalidOperation) as erro:
-                    logger.warning("Falha ao atualizar tarifas da ANEEL: %s", type(erro).__name__)
+                    logger.warning("Falha ao atualizar tarifas da ANEEL: %s", erro)
                     self.proxima_consulta = time.monotonic() + 60
                 else:
                     self.proxima_consulta = time.monotonic() + 3600
@@ -116,3 +135,24 @@ class CatalogoTarifas:
         if not vigentes:
             raise AneelIndisponivel
         return vigentes
+
+
+
+async def atualizar_base_local() -> None:
+    async with httpx.AsyncClient() as cliente:
+        tarifas = await asyncio.wait_for(buscar_tarifas(cliente), timeout=35)
+    hoje = datetime.now(HORARIO_BRASILIA).date()
+    dados = [asdict(tarifa) for tarifa in tarifas if tarifa.fim >= hoje]
+    if not dados:
+        raise ValueError("A ANEEL não retornou tarifas com vigência atual ou futura.")
+    temporario = ARQUIVO_CONTINGENCIA.with_suffix(".tmp")
+    temporario.write_text(
+        json.dumps(dados, default=str, ensure_ascii=False, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+    temporario.replace(ARQUIVO_CONTINGENCIA)
+    print(f"{len(dados)} registros salvos em {ARQUIVO_CONTINGENCIA.name}.")
+
+
+if __name__ == "__main__":
+    asyncio.run(atualizar_base_local())

@@ -44,9 +44,13 @@ const $ = id => document.getElementById(id);
   function help() {
     const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) ||
       (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-    $("installSteps").textContent = ios
-      ? "No Safari, toque em Compartilhar, escolha Adicionar à Tela de Início e confirme."
-      : "Abra o menu do navegador e procure Instalar aplicativo ou Adicionar à tela inicial. Se a opção não aparecer, tente no Chrome ou Edge.";
+    let steps = "No menu do navegador, escolha Instalar aplicativo ou Adicionar à tela inicial.";
+    if (ios) {
+      steps = "Abra este site no Safari. Toque em Compartilhar, escolha Adicionar à Tela de Início e confirme.";
+    } else if (/Android/i.test(navigator.userAgent)) {
+      steps = "Se abriu pelo WhatsApp ou outro aplicativo, toque em ⋮ e escolha Abrir no Chrome. No Chrome, toque em ⋮, escolha Adicionar à tela inicial e depois Instalar.";
+    }
+    $("installSteps").textContent = steps;
     $("installHelp").showModal();
   }
   $("installAction").onclick = async () => {
@@ -94,7 +98,7 @@ const periods = ["Minuto","Hora","Dia","Mês (30 dias)","Ano"];
 const nutrients = {kcal:"Energia",carboidratos:"Carboidratos",proteinas:"Proteínas",gorduras:"Gorduras"};
 const mealKey = "rotulo.refeicao.v1";
 let mode, item, photo, previewUrl, period = 3, request, revision = 0, library;
-let distributorsLoaded = false, distributorRequest, appliedTariff;
+let distributors = [], selectedDistributor, distributorRequest, appliedTariff;
 function el(tag, text, cls) {
   const node = document.createElement(tag);
   node.textContent = text;
@@ -139,6 +143,7 @@ function resetPhoto() {
   say("");
 }
 function openMode(next) {
+  closeDistributorList();
   resetPhoto();
   mode = next;
   $("work").hidden = !mode;
@@ -147,7 +152,7 @@ function openMode(next) {
   $("title").textContent = mode === "energia" ? "Consumo de energia" : "Tabela nutricional";
   $("tip").textContent = mode === "energia" ? "Enquadre a potência em W ou o consumo em kWh/mês." : "Inclua a porção e as quatro linhas de energia, carboidratos, proteínas e gorduras.";
   drawMeal();
-  if (mode === "energia" && !distributorsLoaded) loadDistributors();
+  if (mode === "energia" && !distributors.length) loadDistributors();
   (mode ? $("title") : $("home").querySelector("h1")).focus();
 }
 for (const node of document.querySelectorAll("[data-mode]")) node.onclick = () => openMode(node.dataset.mode);
@@ -187,15 +192,14 @@ async function loadDistributors() {
   distributorRequest = controller;
   showTariffStatus("Carregando distribuidoras da ANEEL…");
   try {
-    const distributors = await getJSON("/api/energia/distribuidoras", {signal:controller.signal,cache:"no-store"});
-    const sorted = distributors.sort((a,b) => a.nome.localeCompare(b.nome,"pt-BR"));
-    const names = sorted.map(item => item.nome);
-    for (const distributor of sorted) {
-      const duplicate = names.indexOf(distributor.nome) !== names.lastIndexOf(distributor.nome);
-      const label = duplicate ? distributor.nome + " · CNPJ " + distributor.cnpj : distributor.nome;
-      $("distributor").add(new Option(label,distributor.cnpj));
-    }
-    distributorsLoaded = true;
+    const data = await getJSON("/api/energia/distribuidoras", {signal:controller.signal,cache:"no-store"});
+    const counts = new Map();
+    for (const {nome} of data) counts.set(nome,(counts.get(nome) ?? 0) + 1);
+    distributors = data.sort((a,b) => a.nome.localeCompare(b.nome,"pt-BR")).map(({nome,cnpj}) => ({
+      nome:normalizeDistributorName(nome),
+      cnpj,
+      label:counts.get(nome) > 1 ? nome + " · CNPJ " + cnpj : nome,
+    }));
     $("distributor").disabled = false;
     showTariffStatus("");
   } catch {
@@ -204,13 +208,116 @@ async function loadDistributors() {
     distributorRequest = null;
   }
 }
+function normalizeDistributorName(name) {
+  return name.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim();
+}
+const distributorField = $("distributor");
+const distributorOptions = $("distributorOptions");
+function closeDistributorList() {
+  distributorOptions.hidden = true;
+  distributorField.setAttribute("aria-expanded","false");
+  distributorField.removeAttribute("aria-activedescendant");
+}
+function renderDistributorList(query) {
+  const text = query.trim();
+  const digits = /^[0-9./\s-]+$/.test(text) ? text.replace(/\D/g,"") : "";
+  const terms = normalizeDistributorName(text).split(" ");
+  const matches = distributors.filter(({nome,cnpj}) =>
+    digits ? cnpj.includes(digits) : terms.every(term => nome.includes(term))
+  );
+  const rows = matches.map(({label,cnpj}) => {
+    const row = el("li",label);
+    row.id = "distributor-" + cnpj;
+    row.dataset.cnpj = cnpj;
+    row.setAttribute("role","option");
+    row.setAttribute("aria-selected","false");
+    return row;
+  });
+  if (!rows.length) rows.push(el("li","Nenhuma distribuidora encontrada","muted"));
+  distributorOptions.replaceChildren(...rows);
+  distributorOptions.hidden = false;
+  distributorOptions.scrollTop = 0;
+  distributorField.removeAttribute("aria-activedescendant");
+  distributorField.setAttribute("aria-expanded","true");
+}
+function chooseDistributor(option) {
+  selectedDistributor = distributors.find(({cnpj}) => cnpj === option.dataset.cnpj);
+  distributorField.value = selectedDistributor.label;
+  closeDistributorList();
+  loadTariff();
+}
+function finishDistributorInput() {
+  if (distributorOptions.hidden) return;
+  const text = distributorField.value.trim();
+  const normalized = normalizeDistributorName(text);
+  const exact = [...distributorOptions.querySelectorAll("[role=option]")].filter(option =>
+    normalizeDistributorName(option.textContent) === normalized ||
+    (/^[0-9./-]+$/.test(text) && option.dataset.cnpj === text.replace(/\D/g,""))
+  );
+  if (!selectedDistributor && exact.length === 1) chooseDistributor(exact[0]);
+  else closeDistributorList();
+}
+function openDistributorList() {
+  if (distributorOptions.hidden) renderDistributorList(selectedDistributor ? "" : distributorField.value);
+}
+distributorField.onfocus = distributorField.onclick = openDistributorList;
+distributorField.oninput = () => {
+  if (selectedDistributor) {
+    selectedDistributor = null;
+    loadTariff();
+  }
+  renderDistributorList(distributorField.value);
+};
+distributorField.onkeydown = event => {
+  if (event.isComposing) return;
+  if (event.key === "Tab") { finishDistributorInput(); return; }
+  if (event.key === "Escape") {
+    if (!distributorOptions.hidden) { event.preventDefault(); closeDistributorList(); }
+    return;
+  }
+  const arrow = event.key === "ArrowDown" || event.key === "ArrowUp";
+  if (!arrow && event.key !== "Enter") return;
+  if (arrow) {
+    event.preventDefault();
+    openDistributorList();
+  }
+  if (distributorOptions.hidden) return;
+  const options = [...distributorOptions.querySelectorAll("[role=option]")];
+  if (!options.length) return;
+  const index = options.findIndex(option => option.id === distributorField.getAttribute("aria-activedescendant"));
+  if (event.key === "Enter") {
+    if (index >= 0 || options.length === 1) {
+      event.preventDefault();
+      chooseDistributor(options[Math.max(index,0)]);
+    }
+    return;
+  }
+  const next = event.key === "ArrowDown" ? Math.min(index+1,options.length-1) : index < 0 ? options.length-1 : Math.max(index-1,0);
+  options[index]?.setAttribute("aria-selected","false");
+  options[next].setAttribute("aria-selected","true");
+  distributorField.setAttribute("aria-activedescendant",options[next].id);
+  options[next].scrollIntoView({block:"nearest"});
+};
+distributorOptions.onmousedown = event => {
+  if (event.target.closest("[role=option]")) event.preventDefault();
+};
+distributorOptions.onclick = event => {
+  const option = event.target.closest("[role=option]");
+  if (!option) return;
+  chooseDistributor(option);
+  if (event.pointerType === "touch") distributorField.blur();
+};
+document.addEventListener("pointerdown", event => {
+  if (!$("distributorPicker").contains(event.target)) finishDistributorInput();
+});
 const dateBR = value => value.split("-").reverse().join("/");
 const rateText = value => "R$ " + br(value,8) + "/kWh";
+const baseNote = data => data.base_local ? " Dados da ANEEL de " + dateBR(data.dados_gerados_em) + " (cópia local)." : "";
 const officialNote = "Tarifa residencial convencional da ANEEL, sem bandeira. Tributos e outras cobranças podem alterar o valor da fatura.";
 async function loadTariff() {
   distributorRequest?.abort();
   distributorRequest = null;
-  const cnpj = $("distributor").value;
+  const cnpj = selectedDistributor?.cnpj;
   if (!cnpj) { showTariffStatus(""); return; }
   const controller = new AbortController();
   distributorRequest = controller;
@@ -218,14 +325,13 @@ async function loadTariff() {
   try {
     const data = await getJSON("/api/energia/tarifa/" + cnpj, {signal:controller.signal,cache:"no-store"});
     if (controller.signal.aborted) return;
-    showTariffStatus(rateText(data.valor_kwh) + " · Vigência até " + dateBR(data.fim) + ". " + officialNote);
+    showTariffStatus(rateText(data.valor_kwh) + " · Vigência até " + dateBR(data.fim) + ". " + officialNote + baseNote(data));
   } catch {
     if (!controller.signal.aborted) showTariffStatus("Não foi possível consultar a tarifa. Toque em Analisar foto para tentar novamente ou informe o valor da fatura.");
   } finally {
     if (distributorRequest === controller) distributorRequest = null;
   }
 }
-$("distributor").onchange = loadTariff;
 function manualRate() {
   const value = $("rate").value.trim();
   if (!value) return null;
@@ -276,7 +382,7 @@ $("analyze").onclick = async () => {
   if (!photo || request) return;
   const manual = mode === "energia" ? manualRate() : null;
   if (mode === "energia" && !validateManualRate()) { $("rate").focus(); return; }
-  const cnpj = $("distributor").value;
+  const cnpj = selectedDistributor?.cnpj;
   if (mode === "energia" && manual === null && (!cnpj || distributorRequest)) {
     say(distributorRequest ? "Aguarde a consulta da ANEEL ou informe o valor da fatura." : "Selecione uma distribuidora ou informe o valor da fatura.");
     ($("distributor").disabled ? $("rate") : $("distributor")).focus();
@@ -293,7 +399,7 @@ $("analyze").onclick = async () => {
     if (mode === "energia") {
       appliedTariff = manual === null
         ? await getJSON("/api/energia/tarifa/" + cnpj, {signal:controller.signal,cache:"no-store"})
-        : {valor_kwh:manual, distribuidora:$("distributor").selectedOptions[0].value ? $("distributor").selectedOptions[0].text : ""};
+        : {valor_kwh:manual, distribuidora:selectedDistributor?.label ?? ""};
     }
     const data = await getJSON("/api/" + mode, {method:"POST",body:photo,signal:controller.signal,headers:{"Content-Type":"image/jpeg"}});
     if (version !== revision) return;
@@ -339,7 +445,7 @@ function drawEnergy() {
   const rate = appliedTariff.valor_kwh;
   const details = [appliedTariff.distribuidora, rateText(rate), br(hours) + " h/dia"].filter(Boolean);
   const source = appliedTariff.fim
-    ? officialNote + " Vigência de " + dateBR(appliedTariff.inicio) + " a " + dateBR(appliedTariff.fim) + "."
+    ? officialNote + " Vigência de " + dateBR(appliedTariff.inicio) + " a " + dateBR(appliedTariff.fim) + "." + baseNote(appliedTariff)
     : "Valor informado da fatura.";
   $("result").replaceChildren(
     el("h2",item.nome),
