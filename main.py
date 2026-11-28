@@ -17,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from PIL import Image, ImageDraw, ImageOps
 from pydantic import BaseModel, Field
 
+from compras import router as compras_router
 from tarifas import AneelIndisponivel, CatalogoTarifas
 
 
@@ -30,6 +31,7 @@ Horas = Annotated[float, Field(gt=0, le=24, allow_inf_nan=False)]
 
 
 class Energia(BaseModel):
+    capacidade: Texto | None = None
     nome: Texto
     watts: Positivo | None
     mensal: Positivo | None
@@ -74,6 +76,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Rótulo Fácil", lifespan=lifespan)
+app.include_router(compras_router)
 
 origens = [
     origem.strip()
@@ -90,7 +93,7 @@ app.add_middleware(
 
 
 INSTRUCOES_ENERGIA = """
-Leia a etiqueta do aparelho. Identifique o nome, a potência elétrica de
+Leia a etiqueta do aparelho. Em capacidade, informe o volume útil em litros, capacidade de refrigeração em BTU/h ou outra capacidade nominal legível, com unidade. Use null se ausente. Identifique o nome, a potência elétrica de
 entrada em watts e/ou o consumo em kWh/mês. Não confunda tensão, corrente,
 BTU/h, potência de saída, kWh/ciclo ou kWh/ano com esses dois valores.
 Use null para valores ausentes. Informe a classe energética se visível.

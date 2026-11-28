@@ -108,6 +108,7 @@ const periods = ["Minuto","Hora","Dia","Mês (30 dias)","Ano"];
 const nutrients = {kcal:"Energia",carboidratos:"Carboidratos",proteinas:"Proteínas",gorduras:"Gorduras"};
 const mealKey = "rotulo.refeicao.v1";
 let mode, item, photo, previewUrl, period = 3, request, revision = 0, library;
+let comparing = false, editingSlot = 0, devices = [];
 let distributors = [], selectedDistributor, distributorRequest, appliedTariff;
 function el(tag, text, cls) {
   const node = document.createElement(tag);
@@ -152,6 +153,12 @@ function resetPhoto() {
   say("");
 }
 function openMode(next) {
+  comparing = false;
+  $("compareGuide").hidden = true;
+  $("calculateDevice").textContent = "Calcular consumo";
+  $("analyzePhoto").textContent = "🔍 Analisar foto";
+  $("comparison").hidden = true;
+  $("photoPanel").hidden = false;
   closeDistributorList();
   resetPhoto();
   mode = next;
@@ -175,6 +182,7 @@ $("back").onclick = () => {
   openMode(null);
 };
 function showAnalysisResult(show) {
+  $("compareOther").hidden = !show || mode !== "energia" || comparing;
   $("foodControls").hidden = !show || mode !== "nutricao";
   $("resultScreen").hidden = !show;
   $("work").hidden = show;
@@ -182,13 +190,13 @@ function showAnalysisResult(show) {
   document.body.classList.toggle("show-analysis-result", show);
   for (const id of ["controls", "resultBox"]) {
     const panel = $(id);
-    panel.hidden = !show || (id === "controls" && mode !== "energia");
+    panel.hidden = !show || (id === "controls" && (mode !== "energia" || comparing));
     if (show) $("resultScreen").append(panel);
     else $("mealBox").before(panel);
   }
   say("");
   window.scrollTo(0, 0);
-  (show ? $("result") : item?.manual ? $("calculateDevice") : $("pick")).focus({preventScroll:show});
+  (show ? $("result") : comparing ? $("compareRun") : item?.manual ? $("calculateDevice") : $("pick")).focus({preventScroll:show});
 }
 if (location.hash === "#resultado") history.replaceState(null, "", location.pathname + location.search);
 window.addEventListener("popstate", () => {
@@ -430,6 +438,7 @@ function updateAnalyzeButton() {
   const missing = mode === "energia" && !selectedDistributor;
   $("analyzePhoto").disabled = !photo || Boolean(request) || missing;
   $("needDistributor").hidden = !missing;
+  $("compareRun").disabled = !selectedDistributor || !devices[0] || !devices[1] || Boolean(request) || editingSlot !== -1;
   $("calculateDevice").disabled = Boolean(request) || !selectedDistributor;
 }
 async function analyzePhoto(device = null) {
@@ -457,6 +466,14 @@ async function analyzePhoto(device = null) {
     }
     const data = device ?? await getJSON(mode === "energia" ? "/api/energia?cnpj=" + encodeURIComponent(cnpj) : "/api/nutricao", {method:"POST",body:photo,signal:controller.signal,headers:{"Content-Type":"image/jpeg"}});
     if (version !== revision) return;
+    if (comparing) {
+      devices[editingSlot] = data;
+      $("compCapacity"+editingSlot).value = data.capacidade ?? "";
+      $("compPrice"+editingSlot).value = "";
+      $("compHours"+editingSlot).value = "";
+      configureSlot(editingSlot === 0 && !devices[1] ? 1 : -1);
+      return;
+    }
     item = data;
     if (mode === "energia") {
       period = 3;
@@ -485,6 +502,151 @@ async function analyzePhoto(device = null) {
 };
 periods.forEach((label,i) => $("periods").append(button(label, () => { period = i; drawEnergy(); })));
 $("hours").oninput = drawEnergy;
+function configureSlot(slot) {
+  editingSlot = slot;
+  resetPhoto();
+  $("manualEnergy").hidden = $("photoPanel").hidden = slot < 0;
+  $("deviceForm").reset();
+  $("deviceUnit").onchange();
+  const review = slot < 0;
+  $("comparison").hidden = !review;
+  $("region").hidden = slot !== 0 && Boolean(selectedDistributor);
+  $("manualEnergy").open = false;
+  $("compareGuide").hidden = false;
+  $("title").textContent = review ? "3 de 3 · Comparar aparelhos" : slot === 0 ? "1 de 3 · Primeiro aparelho" : "2 de 3 · Segundo aparelho";
+  $("compareGuide").textContent = review
+    ? "Informe os preços se quiser saber em quanto tempo a diferença se paga. Depois, escolha o período e toque em Ver comparação."
+    : (slot === 1 ? "Primeiro aparelho: " + devices[0].nome + ". " : "Escolha a distribuidora. ") + "Digite os dados do aparelho ou fotografe a etiqueta.";
+  $("calculateDevice").textContent = "Usar estes dados e continuar";
+  $("analyzePhoto").textContent = "Analisar foto e continuar";
+  for (let i = 0; i < 2; i++) {
+    const device = devices[i];
+    $("compName"+i).textContent = device?.nome ?? "Aguardando dados";
+    $("compEdit"+i).hidden = !device || slot === i;
+    $("compCapacity"+i).parentElement.hidden = !device;
+    $("compHours"+i).parentElement.hidden = !device || usesMonthly(device);
+  }
+  updateAnalyzeButton();
+  $("title").focus();
+  window.scrollTo(0,0);
+}
+function usesMonthly(device) {
+  return device.mensal != null && (device.horas_referencia != null || device.continuo || !device.watts);
+}
+function startComparison(first, hours) {
+  if (!$("resultScreen").hidden) {
+    showAnalysisResult(false);
+    history.replaceState(null,"",location.pathname + location.search);
+  }
+  openMode("energia");
+  comparing = true;
+  devices = [first,null];
+  $("comparison").hidden = false;
+  $("compareYears").value = "1";
+  $("compareCards").replaceChildren();
+  for (let i = 0; i < 2; i++) {
+    const card = el("fieldset","");
+    card.append(el("legend","Aparelho " + (i === 0 ? "A" : "B")));
+    const name = el("strong","");
+    name.id = "compName"+i;
+    card.append(name);
+    for (const [prefix,labelText] of [["compPrice","Preço de compra (R$, opcional)"],["compHours","Horas de uso por dia"]]) {
+      const label = el("label",labelText);
+      const input = document.createElement("input");
+      input.id = prefix+i;
+      input.inputMode = "decimal";
+      if (prefix === "compHours" && first && i === 0) input.value = hours;
+      label.append(input);
+      card.append(label);
+    }
+    const capacityLabel = el("label","Capacidade (opcional, ex.: 350 L ou 9.000 BTU/h)");
+    const capacity = document.createElement("input");
+    capacity.id = "compCapacity"+i;
+    capacity.maxLength = 100;
+    capacity.value = devices[i]?.capacidade ?? "";
+    capacityLabel.append(capacity);
+    card.append(capacityLabel);
+    const edit = button("Substituir aparelho",() => configureSlot(i));
+    edit.id = "compEdit"+i;
+    card.append(edit);
+    $("compareCards").append(card);
+  }
+  configureSlot(first ? 1 : 0);
+}
+$("compareStart").onclick = () => startComparison(null,null);
+$("compareOther").onclick = () => startComparison(item,$("hours").value);
+function comparisonNumber(id, optional, max) {
+  const field = $(id), value = field.value.trim();
+  if (optional && !value) return null;
+  const number = /^\d+(?:[.,]\d+)?$/.test(value) ? Number(value.replace(",",".")) : NaN;
+  if (!Number.isFinite(number) || number > max || (!optional && number <= 0)) {
+    field.focus();
+    throw Error(optional ? "Confira o preço de compra informado." : "Informe as horas de uso por dia, acima de zero e até 24.");
+  }
+  return number;
+}
+$("compareRun").onclick = async () => {
+  if (!comparing || request || !selectedDistributor || !devices.every(Boolean) || !validateManualRate()) return;
+  const version = revision;
+  const controller = new AbortController();
+  request = controller;
+  $("region").disabled = true;
+  updateAnalyzeButton();
+  try {
+    const months = 12 * Number($("compareYears").value);
+    const rows = devices.map((d,i) => {
+      const price = comparisonNumber("compPrice"+i,true,1e12);
+      const monthly = usesMonthly(d);
+      const hours = monthly ? null : comparisonNumber("compHours"+i,false,24);
+      const kwh = monthly ? d.mensal : d.watts * hours * 30 / 1000;
+      return {name:d.nome,price,kwh,capacity:$("compCapacity"+i).value.trim() || "Não informada",basis:monthly ? "Consumo mensal informado" : br(d.watts)+" W × "+br(hours)+" h/dia × 30 dias",
+        condition:(monthly ? d.temperatura_consumo_mensal : d.temperatura_potencia) || "Não informada"};
+    });
+    const manual = manualRate();
+    const tariff = manual === null ? await getJSON("/api/energia/tarifa/"+selectedDistributor.cnpj,{signal:controller.signal,cache:"no-store"}) : {valor_kwh:manual,distribuidora:selectedDistributor.label};
+    if (version !== revision) return;
+    const rate = tariff.valor_kwh;
+    const table = document.createElement("table");
+    function row(title,values,header=false) {
+      const tr = document.createElement("tr");
+      tr.append(el("th",title),...values.map(v => el(header ? "th" : "td",v)));
+      table.append(tr);
+    }
+    row("Indicador",rows.map((r,i)=>(i===0?"A · ":"B · ")+r.name),true);
+    row("Capacidade",rows.map(r=>r.capacity));
+    row("Preço",rows.map(r=>r.price === null ? "Não informado" : money(r.price)));
+    row("Base de cálculo",rows.map(r=>r.basis));
+    row("Condição térmica",rows.map(r=>r.condition));
+    row("Consumo mensal",rows.map(r=>br(r.kwh,3)+" kWh"));
+    row("Energia por mês",rows.map(r=>money(r.kwh*rate)));
+    row("Compra + energia em "+months+" meses",rows.map(r=>r.price === null ? "—" : money(r.price+r.kwh*rate*months)));
+    const efficient = rows[0].kwh <= rows[1].kwh ? 0 : 1;
+    const best = rows[efficient], other = rows[1-efficient];
+    const label = efficient === 0 ? "A" : "B";
+    const savings = (other.kwh-best.kwh)*rate;
+    let conclusion = "Os dois têm o mesmo gasto mensal de energia. A energia não compensa uma diferença no preço de compra.";
+    if (savings > 0) {
+      conclusion = "O aparelho "+label+" economiza "+money(savings)+" por mês.";
+      if (best.price !== null && other.price !== null) {
+        const extra = best.price-other.price;
+        conclusion += extra > 0 ? " O preço adicional de "+money(extra)+" se paga em cerca de "+Math.ceil(extra/savings)+" meses." : " Ele também tem preço de compra igual ou menor.";
+      } else conclusion += " Informe os dois preços para calcular o retorno.";
+    }
+    if (rows.every(r => r.price !== null)) {
+      const totals = rows.map(r => r.price + r.kwh * rate * months);
+      const difference = Math.round(Math.abs(totals[0]-totals[1])*100)/100;
+      conclusion += difference ? " Em "+months+" meses, o aparelho "+(totals[0]<totals[1]?"A":"B")+" custa "+money(difference)+" a menos no total." : " Os custos totais se igualam no período escolhido.";
+    }
+    item = {nome:"Comparação de aparelhos"};
+    $("result").replaceChildren(el("h2",item.nome),el("p",conclusion),table,el("p",tariff.distribuidora+" · "+rateText(rate)+(manual === null ? " · ANEEL" : " · Fatura")),el("p",(usesMonthly(devices[0]) !== usesMonthly(devices[1]) ? "As bases diferem: um consumo é mensal e o outro foi estimado pela potência. " : "")+"Estimativa com tarifa e uso constantes. Compare aparelhos de capacidade e condições de uso semelhantes."));
+    history.pushState({analysisResult:version},"","#resultado");
+    showAnalysisResult(true);
+  } catch(error) {
+    if (version === revision) say(error.message || "Não foi possível comparar os aparelhos.");
+  } finally {
+    if (version === revision) { request=null; $("region").disabled=false; updateAnalyzeButton(); }
+  }
+};
 function energyTemperature(monthly) {
   if (item.manual) return "Cálculo com dados informados manualmente, sem ajuste de temperatura.";
   const condition = monthly ? item.temperatura_consumo_mensal : item.temperatura_potencia;
@@ -503,7 +665,7 @@ function energyTemperature(monthly) {
 }
 function drawEnergy() {
   const hours = Number($("hours").value);
-  const monthly = item.mensal != null && (item.horas_referencia != null || item.continuo || !item.watts);
+  const monthly = usesMonthly(item);
   const base = item.horas_referencia ?? 24;
   const kw = monthly ? item.mensal/(30*base) : item.watts/1000;
   const kwh = kw * [1/60,1,hours,hours*30,hours*365][period];
