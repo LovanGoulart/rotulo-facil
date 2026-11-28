@@ -15,4 +15,13 @@ article {overflow-wrap:anywhere}
   article > a {padding:10px;border:1px solid #84998d;border-radius:12px;font-weight:650}
   ul {padding-left:1.3rem}
 }
-</style><script defer src="/compras.js"></script></head><body><header><div><span>◈</span> Rótulo Fácil</div><nav><button id="voltar" aria-label="Voltar à pesquisa" hidden>←</button><a href="/" aria-label="Início">⌂</a></nav></header><main><section id="entrada"><h1>Pesquisar uma compra</h1><form><label for="produto">O que você quer comprar?</label><textarea id="produto" rows="4" required minlength="3" maxlength="1200" placeholder="Ex.: ar-condicionado inverter de 9.000 BTU, 220 V, silencioso para o quarto"></textarea><label for="teto">Quanto quer gastar, no máximo?</label><input id="teto" required type="number" inputmode="decimal" min="0.01" max="10000000" step="0.01" placeholder="R$"><button>Buscar produtos</button></form><p role="status" id="status"></p></section><section id="resultado" hidden><h1 tabindex="-1">Melhores opções para você</h1><div id="lista"></div></section></main></body></html>
+</style><script defer src="/compras.js?v=35"></script></head><body><header><div><span>◈</span> Rótulo Fácil</div><nav><button id="voltar" aria-label="Voltar à pesquisa" hidden>←</button><a href="/" aria-label="Início">⌂</a></nav></header><main>
+<section id="entrada">
+  <h1>Pesquisar na loja Magalu</h1>
+  <form>
+    <label for="produto">O que você quer comprar?</label>
+    <input id="produto" type="search" required maxlength="200" placeholder="Ex.: PS5, ventilador ou geladeira">
+    <button type="submit">Buscar na loja Magalu</button>
+  </form>
+</section>
+</main></body></html>
