@@ -100,6 +100,7 @@ async def pesquisar(busca: Busca, request: Request):
     if estado.vagas.locked() or len(estado.chamadas) >= 30:
         raise HTTPException(429, "Há muitas pesquisas em andamento. Tente em um minuto.")
     estado.chamadas.append(agora)
+    etapa = "pesquisa web"
     async with estado.vagas:
         try:
             resposta = await estado.cliente.post(
@@ -115,6 +116,7 @@ async def pesquisar(busca: Busca, request: Request):
             )
             resposta.raise_for_status()
             relatorio, fontes = ler_pesquisa(resposta.json())
+            etapa = "organização dos resultados"
             organizada = await estado.cliente.post(
                 "https://api.openai.com/v1/responses",
                 headers={"Authorization": f"Bearer {chave}"},
@@ -128,7 +130,7 @@ async def pesquisar(busca: Busca, request: Request):
                         "Sem ofertas confirmadas, devolva ofertas vazias. Esquema: "
                         + json.dumps(Resultado.model_json_schema(), ensure_ascii=False)
                     ),
-                    "input": json.dumps({"relatorio": relatorio, "fontes": sorted(fontes)}, ensure_ascii=False),
+                    "input": "Produza o resultado em JSON.\n" + json.dumps({"relatorio": relatorio, "fontes": sorted(fontes)}, ensure_ascii=False),
                 }, timeout=45,
             )
             organizada.raise_for_status()
@@ -138,11 +140,16 @@ async def pesquisar(busca: Busca, request: Request):
         except httpx.HTTPStatusError as exc:
             status = exc.response.status_code
             try:
-                codigo = exc.response.json()["error"].get("code")
-            except (ValueError, KeyError, TypeError, AttributeError):
-                codigo = None
-            logging.getLogger(__name__).warning("Compras: HTTP %s, código %s, request_id %s",
-                                                status, codigo, exc.response.headers.get("x-request-id"))
+                erro = exc.response.json().get("error") or {}
+                codigo = erro.get("code")
+                parametro = erro.get("param")
+                mensagem = " ".join(str(erro.get("message") or "").replace(chave, "[oculta]").split())[:500]
+            except (ValueError, AttributeError):
+                codigo, parametro, mensagem = None, None, ""
+            logging.getLogger(__name__).warning(
+                "Compras: HTTP %s, etapa=%s, parâmetro=%s, motivo=%s, código=%s, request_id=%s",
+                status, etapa, parametro, mensagem, codigo, exc.response.headers.get("x-request-id"),
+            )
             if codigo == "insufficient_quota":
                 raise HTTPException(503, "Saldo ou cota da API insuficiente para a pesquisa.")
             if status in (401, 403):
