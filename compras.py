@@ -4,7 +4,7 @@ import json
 import os
 import re
 import time
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import urljoin, urlsplit, urlunsplit
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request
@@ -117,11 +117,16 @@ async def conferir_ofertas(cliente, resultado):
     ofertas = resultado["ofertas"]
     destinos = await asyncio.gather(*(conferir(o) for o in ofertas))
     verificadas = []
+    modelos = set()
     for oferta, destino in zip(ofertas, destinos):
-        if destino:
+        modelo = oferta.modelo.strip().casefold()
+        if destino and modelo not in modelos:
+            modelos.add(modelo)
             oferta.url = destino
             oferta.loja = DOMINIOS[dominio_loja(destino)]
             verificadas.append(oferta)
+    if ofertas and not verificadas:
+        raise HTTPException(503, "Encontrei ofertas dentro do orçamento, mas não consegui confirmar os endereços das lojas. Tente novamente em instantes.")
     return {"ofertas": verificadas, "destinos_verificados": True}
 
 
@@ -163,6 +168,7 @@ escolha os atributos pertinentes. Dê razões comparativas concretas em vantagen
 Para cada fato informe a URL consultada do modelo correto. Em avaliações sintetize temas
 recorrentes distinguindo relatos isolados e cite nota e contagem apenas se verificadas
 para esse modelo. Omita informações sem evidência. Use exclusivamente páginas diretas dos varejistas permitidos para ofertas e evidências. Exclua redirecionadores, links encurtados e páginas de busca.
+Pesquise também pelo nome completo e siglas do produto em lojas distintas. Para um mesmo modelo, inclua alternativas em lojas diferentes com preço e URL próprios.
 Informe em português os modelos, preços, lojas, fretes e links exatos das páginas consultadas, inclusive para cada especificação e avaliação. Indique quando nenhuma oferta foi encontrada."""
 
 
@@ -186,21 +192,34 @@ def ler_pesquisa(resposta):
     return "\n".join(partes), fontes
 
 
+def chave_fonte(url):
+    partes = urlsplit(url)
+    parametros = [p for p in partes.query.split("&") if not p.lower().startswith("utm_")]
+    return urlunsplit((partes.scheme, partes.netloc.lower(), partes.path, "&".join(parametros), ""))
+
+
 def ofertas_verificadas(dados, fontes, teto):
-    fontes = {url for url in fontes if url_oficial(url)}
+    urls = {chave_fonte(url): url for url in sorted(fontes) if url_oficial(url)}
     candidatas = Resultado.model_validate_json(dados).ofertas
     selecionadas = []
-    modelos = set()
+    sem_fonte = False
     for oferta in candidatas:
-        modelo = oferta.modelo.strip().casefold()
-        if oferta.url not in fontes or oferta.preco + (oferta.frete or 0) > teto or modelo in modelos:
+        if oferta.preco + (oferta.frete or 0) > teto:
             continue
+        if not url_oficial(oferta.url) or chave_fonte(oferta.url) not in urls:
+            sem_fonte = True
+            continue
+        oferta.url = urls[chave_fonte(oferta.url)]
         for campo in ("vantagens", "ressalvas", "avaliacoes"):
-            setattr(oferta, campo, [e for e in getattr(oferta, campo) if e.url in fontes])
-        if oferta.vantagens:
-            oferta.loja = urlsplit(oferta.url).hostname.removeprefix("www.").removeprefix("produto.")
-            selecionadas.append(oferta)
-            modelos.add(modelo)
+            evidencias = []
+            for fato in getattr(oferta, campo):
+                if url_oficial(fato.url) and chave_fonte(fato.url) in urls:
+                    fato.url = urls[chave_fonte(fato.url)]
+                    evidencias.append(fato)
+            setattr(oferta, campo, evidencias)
+        selecionadas.append(oferta)
+    if sem_fonte and not selecionadas:
+        raise HTTPException(503, "A pesquisa localizou produtos, mas não confirmou a página da oferta em uma loja autorizada.")
     return {"ofertas": selecionadas}
 
 
@@ -233,7 +252,7 @@ async def pesquisar(busca: Busca, request: Request):
             resposta.raise_for_status()
             relatorio, fontes = ler_pesquisa(resposta.json())
             if not fontes:
-                return {"ofertas": [], "destinos_verificados": True}
+                raise HTTPException(503, "A pesquisa não retornou fontes das lojas autorizadas. Tente novamente em instantes.")
             etapa = "organização dos resultados"
             organizada = await estado.cliente.post(
                 "https://api.openai.com/v1/responses",
