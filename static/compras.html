@@ -15,12 +15,23 @@ article {overflow-wrap:anywhere}
   article > a {padding:10px;border:1px solid #84998d;border-radius:12px;font-weight:650}
   ul {padding-left:1.3rem}
 }
-</style><script defer src="/compras.js?v=35"></script></head><body><header><div><span>◈</span> Rótulo Fácil</div><nav><button id="voltar" aria-label="Voltar à pesquisa" hidden>←</button><a href="/" aria-label="Início">⌂</a></nav></header><main>
+.detalhes {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 16px}
+.amplo {grid-column:1/-1}
+@media(max-width:640px){.detalhes{grid-template-columns:1fr}}
+</style><script defer src="/compras.js?v=36"></script></head><body><header><div><span>◈</span> Rótulo Fácil</div><nav><button id="voltar" aria-label="Voltar à pesquisa" hidden>←</button><a href="/" aria-label="Início">⌂</a></nav></header><main>
 <section id="entrada">
   <h1>Pesquisar na loja Magalu</h1>
   <form>
     <label for="produto">O que você quer comprar?</label>
     <input id="produto" type="search" required maxlength="200" placeholder="Ex.: PS5, ventilador ou geladeira">
+    <div class="detalhes">
+      <div><label for="marca">Marca (opcional)</label>
+        <input id="marca" maxlength="60" placeholder="Ex.: Sony"></div>
+      <div><label for="modelo">Modelo ou versão (opcional)</label>
+        <input id="modelo" maxlength="80" placeholder="Ex.: Slim Digital"></div>
+      <div class="amplo"><label for="caracteristicas">Características desejadas (opcional)</label>
+        <input id="caracteristicas" maxlength="160" placeholder="Ex.: 1 TB, 220 V, inox ou tamanho 42"></div>
+    </div>
     <button type="submit">Buscar na loja Magalu</button>
   </form>
 </section>

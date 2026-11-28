@@ -8,6 +8,13 @@ document.querySelector("form").addEventListener("submit", event => {
     produto.reportValidity();
     return;
   }
-  const busca = encodeURIComponent(termo);
+  let consulta = termo;
+  for (const id of ["marca", "modelo", "caracteristicas"]) {
+    const valor = document.getElementById(id).value.trim().replace(/\s+/g, " ");
+    if (valor && !(" " + consulta.toLowerCase() + " ").includes(" " + valor.toLowerCase() + " ")) {
+      consulta += " " + valor;
+    }
+  }
+  const busca = encodeURIComponent(consulta);
   window.location.assign("https://www.magazinevoce.com.br/magazineinformaticalg/busca/" + busca + "/");
 });
