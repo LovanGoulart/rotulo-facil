@@ -1,12 +1,14 @@
+import asyncio
 import logging
 import json
 import os
 import re
 import time
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 
 router = APIRouter()
@@ -57,6 +59,68 @@ def url_oficial(url):
                                   partes.query, re.I))
     except ValueError:
         return False
+
+
+def dominio_loja(url):
+    return urlsplit(url).hostname.removeprefix("www.").removeprefix("produto.")
+
+
+async def destino_confirmado(cliente, url):
+    if not url_oficial(url):
+        return None
+    loja = dominio_loja(url)
+    if loja == "kabum.com.br" and not re.fullmatch(r"/produto/[0-9]+(?:/[A-Za-z0-9_-]+)?/?", urlsplit(url).path):
+        return None
+    try:
+        async with asyncio.timeout(8):
+            for _ in range(5):
+                if not url_oficial(url) or dominio_loja(url) != loja:
+                    return None
+                async with cliente.stream("GET", url, follow_redirects=False) as resposta:
+                    if resposta.status_code in (301, 302, 303, 307, 308):
+                        local = resposta.headers.get("location")
+                        if not local:
+                            return None
+                        url = urljoin(url, local)
+                        continue
+                    if resposta.status_code != 200 or "text/html" not in resposta.headers.get("content-type", "").lower():
+                        return None
+                    if resposta.headers.get("refresh"):
+                        return None
+                    inicio = bytearray()
+                    async for bloco in resposta.aiter_bytes(4096):
+                        inicio.extend(bloco)
+                        if b"</head" in inicio.lower() or len(inicio) >= 65536:
+                            break
+                    if re.search(rb"<meta\b[^>]*http-equiv\s*=\s*['\"]?refresh", inicio, re.I):
+                        return None
+                    return url
+    except (TimeoutError, httpx.HTTPError, ValueError):
+        return None
+
+
+@router.get("/api/compras/abrir")
+async def abrir(url: str, request: Request):
+    destino = await destino_confirmado(request.app.state.cliente, url)
+    if not destino:
+        raise HTTPException(409, "Destino da loja não confirmado. Volte à pesquisa.")
+    return RedirectResponse(destino, status_code=302, headers={"Cache-Control": "no-store"})
+
+
+async def conferir_ofertas(cliente, resultado):
+    limite = asyncio.Semaphore(6)
+    async def conferir(oferta):
+        async with limite:
+            return await destino_confirmado(cliente, oferta.url)
+    ofertas = resultado["ofertas"]
+    destinos = await asyncio.gather(*(conferir(o) for o in ofertas))
+    verificadas = []
+    for oferta, destino in zip(ofertas, destinos):
+        if destino:
+            oferta.url = destino
+            oferta.loja = dominio_loja(destino)
+            verificadas.append(oferta)
+    return {"ofertas": verificadas}
 
 
 class Busca(BaseModel):
@@ -188,7 +252,7 @@ async def pesquisar(busca: Busca, request: Request):
             organizada.raise_for_status()
             dados = "".join(p["text"] for m in organizada.json()["output"]
                             for p in m.get("content", []) if p.get("type") == "output_text")
-            return ofertas_verificadas(dados, fontes, busca.teto)
+            return await conferir_ofertas(estado.cliente, ofertas_verificadas(dados, fontes, busca.teto))
         except httpx.HTTPStatusError as exc:
             status = exc.response.status_code
             try:

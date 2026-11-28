@@ -8,7 +8,7 @@ function texto(pai, tag, valor) {
 }
 function link(pai, titulo, url) {
   const a = texto(pai, "a", titulo);
-  a.href = url;
+  a.href = "/api/compras/abrir?" + new URLSearchParams({url});
   a.target = "_blank";
   a.rel = "noopener noreferrer";
 }
