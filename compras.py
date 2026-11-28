@@ -1,6 +1,7 @@
 import logging
 import json
 import os
+import re
 import time
 from urllib.parse import urlsplit
 
@@ -9,6 +10,29 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 router = APIRouter()
+
+
+# Hosts de vitrines e páginas de produto. Não incluir encurtadores ou redirecionadores.
+DOMINIOS = (
+    "mercadolivre.com.br", "magazineluiza.com.br", "amazon.com.br", "shopee.com.br",
+    "kabum.com.br", "casasbahia.com.br", "fastshop.com.br", "leroymerlin.com.br",
+)
+HOSTS = {host for dominio in DOMINIOS for host in (dominio, "www." + dominio)}
+HOSTS.add("produto.mercadolivre.com.br")
+
+
+def url_oficial(url):
+    if not isinstance(url, str) or any(c.isspace() or ord(c) < 32 for c in url):
+        return False
+    try:
+        partes = urlsplit(url)
+        return (partes.scheme == "https" and partes.netloc.lower() in HOSTS
+                and chr(92) not in url and partes.path not in ("", "/")
+                and not re.search(r"(?:^|/)(?:gp/redirect|sspa/click|redirect|redir|click)(?:/|$)", partes.path, re.I)
+                and not re.search(r"(?:^|&)(?:url|redirect_url|redirect_uri|destination|return_url)=",
+                                  partes.query, re.I))
+    except ValueError:
+        return False
 
 
 class Busca(BaseModel):
@@ -48,7 +72,7 @@ relevantes. Não confunda potência nominal com consumo medido. Para outras cate
 escolha os atributos pertinentes. Dê razões comparativas concretas em vantagens.
 Para cada fato informe a URL consultada do modelo correto. Em avaliações sintetize temas
 recorrentes distinguindo relatos isolados e cite nota e contagem apenas se verificadas
-para esse modelo. Omita informações sem evidência. Use página direta da oferta.
+para esse modelo. Omita informações sem evidência. Use exclusivamente páginas diretas dos varejistas permitidos para ofertas e evidências. Exclua redirecionadores, links encurtados e páginas de busca.
 Informe em português os modelos, preços, lojas, fretes e links exatos das páginas consultadas, inclusive para cada especificação e avaliação. Indique quando nenhuma oferta foi encontrada."""
 
 
@@ -66,8 +90,8 @@ def ler_pesquisa(resposta):
                 fontes.update(a.get("url") for a in parte.get("annotations", []) if a.get("type") == "url_citation")
     if not pesquisou:
         raise ValueError("Pesquisa incompleta")
-    fontes = {u for u in fontes if isinstance(u, str) and urlsplit(u).scheme in {"http", "https"} and urlsplit(u).hostname}
-    if not partes or not fontes:
+    fontes = {u for u in fontes if url_oficial(u)}
+    if not partes:
         raise ValueError("Pesquisa sem texto ou fontes")
     return "\n".join(partes), fontes
 
@@ -108,7 +132,7 @@ async def pesquisar(busca: Busca, request: Request):
                 headers={"Authorization": f"Bearer {chave}"},
                 json={
                     "model": "gpt-4.1", "store": False,
-                    "tools": [{"type": "web_search", "user_location": {"type": "approximate", "country": "BR"}}],
+                    "tools": [{"type": "web_search", "filters": {"allowed_domains": list(DOMINIOS)}, "user_location": {"type": "approximate", "country": "BR"}}],
                     "tool_choice": "required", "include": ["web_search_call.action.sources"],
                     "instructions": REGRAS,
                     "input": busca.model_dump_json(),
@@ -116,6 +140,8 @@ async def pesquisar(busca: Busca, request: Request):
             )
             resposta.raise_for_status()
             relatorio, fontes = ler_pesquisa(resposta.json())
+            if not fontes:
+                return {"ofertas": []}
             etapa = "organização dos resultados"
             organizada = await estado.cliente.post(
                 "https://api.openai.com/v1/responses",
