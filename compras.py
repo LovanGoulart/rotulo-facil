@@ -15,34 +15,34 @@ router = APIRouter()
 
 
 # Hosts de vitrines e páginas de produto. Não incluir encurtadores ou redirecionadores.
-DOMINIOS = (
-    "magazineluiza.com.br",
-    "amazon.com.br",
-    "mercadolivre.com.br",
-    "fastshop.com.br",
-    "kabum.com.br",
-    "waz.com.br",
-    "terabyteshop.com.br",
-    "pichau.com.br",
-    "gigantec.com.br",
-    "netshoes.com.br",
-    "lojasrenner.com.br",
-    "brastemp.com.br",
-    "consul.com.br",
-    "madeiramadeira.com.br",
-    "epocacosmeticos.com.br",
-    "boticario.com.br",
-    "natura.com.br",
-    "petlove.com.br",
-    "petz.com.br",
-    "cobasi.com.br",
-    "dafiti.com.br",
-    "havan.com.br",
-    "carrefour.com.br",
-    "centauro.com.br",
-    "shopee.com.br",
-    "leroymerlin.com.br",
-)
+DOMINIOS = {
+    "magazineluiza.com.br": "Magalu",
+    "amazon.com.br": "Amazon",
+    "mercadolivre.com.br": "Mercado Livre",
+    "fastshop.com.br": "Fast Shop",
+    "kabum.com.br": "KaBuM!",
+    "waz.com.br": "WAZ",
+    "terabyteshop.com.br": "TerabyteShop",
+    "pichau.com.br": "Pichau",
+    "gigantec.com.br": "Gigantec",
+    "netshoes.com.br": "Netshoes",
+    "lojasrenner.com.br": "Renner",
+    "brastemp.com.br": "Brastemp",
+    "consul.com.br": "Consul",
+    "madeiramadeira.com.br": "MadeiraMadeira",
+    "epocacosmeticos.com.br": "Época Cosméticos",
+    "boticario.com.br": "O Boticário",
+    "natura.com.br": "Natura",
+    "petlove.com.br": "Petlove",
+    "petz.com.br": "Petz",
+    "cobasi.com.br": "Cobasi",
+    "dafiti.com.br": "Dafiti",
+    "havan.com.br": "Havan",
+    "carrefour.com.br": "Carrefour",
+    "centauro.com.br": "Centauro",
+    "shopee.com.br": "Shopee",
+    "leroymerlin.com.br": "Leroy Merlin",
+}
 HOSTS = {host for dominio in DOMINIOS for host in (dominio, "www." + dominio)}
 HOSTS.add("produto.mercadolivre.com.br")
 
@@ -100,10 +100,12 @@ async def destino_confirmado(cliente, url):
 
 
 @router.get("/api/compras/abrir")
-async def abrir(url: str, request: Request):
+async def abrir(url: str, request: Request, confirmar: bool = False):
     destino = await destino_confirmado(request.app.state.cliente, url)
     if not destino:
         raise HTTPException(409, "Destino da loja não confirmado. Volte à pesquisa.")
+    if confirmar:
+        return {"destino": destino}
     return RedirectResponse(destino, status_code=302, headers={"Cache-Control": "no-store"})
 
 
@@ -118,9 +120,9 @@ async def conferir_ofertas(cliente, resultado):
     for oferta, destino in zip(ofertas, destinos):
         if destino:
             oferta.url = destino
-            oferta.loja = dominio_loja(destino)
+            oferta.loja = DOMINIOS[dominio_loja(destino)]
             verificadas.append(oferta)
-    return {"ofertas": verificadas}
+    return {"ofertas": verificadas, "destinos_verificados": True}
 
 
 class Busca(BaseModel):
@@ -231,7 +233,7 @@ async def pesquisar(busca: Busca, request: Request):
             resposta.raise_for_status()
             relatorio, fontes = ler_pesquisa(resposta.json())
             if not fontes:
-                return {"ofertas": []}
+                return {"ofertas": [], "destinos_verificados": True}
             etapa = "organização dos resultados"
             organizada = await estado.cliente.post(
                 "https://api.openai.com/v1/responses",
