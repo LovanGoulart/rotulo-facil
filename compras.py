@@ -14,8 +14,32 @@ router = APIRouter()
 
 # Hosts de vitrines e páginas de produto. Não incluir encurtadores ou redirecionadores.
 DOMINIOS = (
-    "mercadolivre.com.br", "magazineluiza.com.br", "amazon.com.br", "shopee.com.br",
-    "kabum.com.br", "casasbahia.com.br", "fastshop.com.br", "leroymerlin.com.br",
+    "magazineluiza.com.br",
+    "amazon.com.br",
+    "mercadolivre.com.br",
+    "fastshop.com.br",
+    "kabum.com.br",
+    "waz.com.br",
+    "terabyteshop.com.br",
+    "pichau.com.br",
+    "gigantec.com.br",
+    "netshoes.com.br",
+    "lojasrenner.com.br",
+    "brastemp.com.br",
+    "consul.com.br",
+    "madeiramadeira.com.br",
+    "epocacosmeticos.com.br",
+    "boticario.com.br",
+    "natura.com.br",
+    "petlove.com.br",
+    "petz.com.br",
+    "cobasi.com.br",
+    "dafiti.com.br",
+    "havan.com.br",
+    "carrefour.com.br",
+    "centauro.com.br",
+    "shopee.com.br",
+    "leroymerlin.com.br",
 )
 HOSTS = {host for dominio in DOMINIOS for host in (dominio, "www." + dominio)}
 HOSTS.add("produto.mercadolivre.com.br")
@@ -97,6 +121,7 @@ def ler_pesquisa(resposta):
 
 
 def ofertas_verificadas(dados, fontes, teto):
+    fontes = {url for url in fontes if url_oficial(url)}
     candidatas = Resultado.model_validate_json(dados).ofertas
     selecionadas = []
     modelos = set()
@@ -107,6 +132,7 @@ def ofertas_verificadas(dados, fontes, teto):
         for campo in ("vantagens", "ressalvas", "avaliacoes"):
             setattr(oferta, campo, [e for e in getattr(oferta, campo) if e.url in fontes])
         if oferta.vantagens:
+            oferta.loja = urlsplit(oferta.url).hostname.removeprefix("www.").removeprefix("produto.")
             selecionadas.append(oferta)
             modelos.add(modelo)
     return {"ofertas": selecionadas}
