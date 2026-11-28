@@ -2,4 +2,17 @@
 <html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#16463a"><title>Pesquisar uma compra · Rótulo Fácil</title>
 <style>
 *{box-sizing:border-box}body{margin:0;background:#f6f6ee;color:#16372f;font:18px/1.5 system-ui,sans-serif}header{background:#16463a;color:white;display:flex;align-items:center;justify-content:space-between;padding:12px 5%;font-size:24px;font-weight:750}header span{color:#ffe183}nav{display:flex;gap:8px}nav a,nav button{display:grid;place-items:center;width:44px;height:44px;border:1px solid #719286;border-radius:12px;color:white;background:#234f43;text-decoration:none;font:24px system-ui}main{max-width:760px;margin:32px auto;padding:0 16px}form,article{background:white;border:1px solid #c6d2c8;border-radius:18px;padding:24px;margin:16px 0}article{border-top:6px solid #26725b}label{display:block;font-weight:650}textarea,input{width:100%;font:inherit;padding:12px;border:1px solid #84998d;border-radius:12px;margin:6px 0 18px}form button{background:#16463a;color:white;border:0;border-radius:14px;font:inherit;font-weight:650;padding:12px 20px}button{cursor:pointer}button:disabled{opacity:.65}h1,h2,h3,p{margin:0 0 10px}a{color:#195944}li{margin-bottom:7px}[hidden]{display:none!important}
+article {overflow-wrap:anywhere}
+@media (max-width: 640px), (pointer: coarse) and (max-height: 540px) {
+  body {font-size:16px}
+  header {padding:8px 16px;font-size:21px}
+  main {width:100%;max-width:none;margin:20px auto 40px;padding:0 12px}
+  h1 {font-size:1.65rem;line-height:1.15}
+  h2 {font-size:1.25rem;line-height:1.3}
+  form,article {padding:16px;margin:12px 0}
+  textarea {resize:vertical}
+  form button,article > a {display:block;width:100%;min-height:44px;text-align:center}
+  article > a {padding:10px;border:1px solid #84998d;border-radius:12px;font-weight:650}
+  ul {padding-left:1.3rem}
+}
 </style><script defer src="/compras.js"></script></head><body><header><div><span>◈</span> Rótulo Fácil</div><nav><button id="voltar" aria-label="Voltar à pesquisa" hidden>←</button><a href="/" aria-label="Início">⌂</a></nav></header><main><section id="entrada"><h1>Pesquisar uma compra</h1><form><label for="produto">O que você quer comprar?</label><textarea id="produto" rows="4" required minlength="3" maxlength="1200" placeholder="Ex.: ar-condicionado inverter de 9.000 BTU, 220 V, silencioso para o quarto"></textarea><label for="teto">Quanto quer gastar, no máximo?</label><input id="teto" required type="number" inputmode="decimal" min="0.01" max="10000000" step="0.01" placeholder="R$"><button>Buscar produtos</button></form><p role="status" id="status"></p></section><section id="resultado" hidden><h1 tabindex="-1">Melhores opções para você</h1><div id="lista"></div></section></main></body></html>
